@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DX7 hardware check</title>
+  <meta name="theme-color" content="#8a3b12">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="hardware.js"></script>
+</head>
+<body>
+<main>
+  <h1>DX7 hardware check</h1>
+  <p class="lead">One tap sends a fixed voice to the edit buffer of every instrument that is on. Nothing stored changes; memory protect stays on.</p>
+
+  <p id="status" class="status" role="status" aria-live="polite">
+    <span id="port-line">Port: MIDI is asked for on the first send.</span><br>
+    <span id="result-line">Nothing sent yet.</span>
+  </p>
+  <p id="retry-row" hidden><button id="retry" type="button" class="secondary">Ask for MIDI again</button></p>
+
+  <section aria-labelledby="send-heading">
+    <h2 id="send-heading">Send</h2>
+    <button id="send-core" type="button" class="send">Send BRASS 1</button>
+    <p class="hint">The voice only. All three instruments should play BRASS 1.</p>
+    <button id="send-addendum-first" type="button" class="send">Send BRASS 1 +A, addendum first</button>
+    <button id="send-voice-first" type="button" class="send">Send BRASS 1 +A, voice first</button>
+    <p class="hint">BRASS 1 renamed "BRASS 1 +A", with a DX7II addendum. On the DX7s and the DX7IID it should play in unison, thick and detuned, and the pitch bend wheel should bend an octave. The TX816 gets the voice only and should play plain BRASS 1.</p>
+    <p class="hint">The library app will send the addendum <strong id="order-now">first</strong>, until this check says otherwise.</p>
+  </section>
+
+  <section aria-labelledby="targets-heading">
+    <h2 id="targets-heading">MIDI output and targets</h2>
+    <div id="output-row" class="row" hidden>
+      <label for="output">Output</label>
+      <select id="output"></select>
+    </div>
+    <div id="targets"></div>
+    <div class="row">
+      <label for="pause">Pause between messages (ms)</label>
+      <input id="pause" type="number" inputmode="numeric" min="0" max="1000" step="10">
+    </div>
+  </section>
+
+  <section aria-labelledby="panel-heading">
+    <h2 id="panel-heading">What to read on the panel after BRASS 1 +A</h2>
+    <p class="hint">With the addendum applied, the DX7s and DX7IID edit buffer should show these values. A value under the wrong parameter, or one missing, means the addendum layout in the core is wrong.</p>
+    <table id="panel">
+      <thead><tr><th>Parameter</th><th>Value</th><th>Yamaha no.</th><th>Byte</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section aria-labelledby="setup-heading">
+    <h2 id="setup-heading">Setup, per instrument</h2>
+    <dl id="setup-notes" class="setup"></dl>
+    <p class="hint">Memory protect stays on everywhere. Edit-buffer messages bypass it.</p>
+  </section>
+
+  <section aria-labelledby="checklist-heading">
+    <h2 id="checklist-heading">Hardware checklist</h2>
+    <details>
+      <summary>Steps, and what to write down</summary>
+      <p class="hint">Write what you find in <code>research/sysex-reception.md</code>, section "Hardware milestone results". Write what you saw, including "nothing happened".</p>
+      <h3>Before you start</h3>
+      <ol>
+        <li>Set each instrument as in the setup notes above. Leave memory protect on everywhere: the DX7s, the DX7IID and every TF1.</li>
+        <li>On each instrument, note the name of one stored voice (internal 1, say). The last step of the chain check calls it up again to show nothing stored changed.</li>
+      </ol>
+      <h3>The chain</h3>
+      <ol start="3">
+        <li>Open this page from its Pages address in Chrome on the phone. Chrome should ask once to control MIDI devices. Allow it. Reload: it should not ask again.</li>
+        <li>Plug in the USB-MIDI cable through the OTG adapter. With one output the page uses it and names it on the status line. With several, it shows a chooser. Reload: the choice should still be there.</li>
+        <li>Tap <em>Send BRASS 1</em>. The DX7s should show BRASS 1 and play it from its own keys. The TF1 modules' green Parameter Change LEDs should flash, and the TX816 should play BRASS 1 from the DX7s keys. The DX7IID should play BRASS 1 from its keys.</li>
+        <li>On each instrument, call up the stored voice from step 2. It should be unchanged, and memory protect should still be on.</li>
+      </ol>
+      <h3>Addendum order (finding 5)</h3>
+      <ol start="7">
+        <li>Reset: on the DX7s and the DX7IID, call up a stored voice in plain Poly mode, with no unison.</li>
+        <li>Tap <em>BRASS 1 +A, addendum first</em>. On each of the DX7s and the DX7IID: does the display say BRASS 1 +A? Does a chord sound in unison, thick and detuned? Does the wheel bend an octave? Write down applied or not applied for each one.</li>
+        <li>Reset as in step 7, then tap <em>BRASS 1 +A, voice first</em>. Write down the same for each instrument.</li>
+        <li>Leftover addendum: after a tap that applied the addendum, tap <em>Send BRASS 1</em> (voice only). Does unison stay on, left over from before, or go? This decides whether the library app must send an INIT addendum with voices that have none.</li>
+        <li>The order to use: addendum first if that worked, or if both worked; voice first if only that worked. Set <code>ADDENDUM_FIRST</code> in <code>app/send.js</code> to match and republish.</li>
+      </ol>
+      <h3>Addendum layout</h3>
+      <ol start="12">
+        <li>With the addendum applied, read the values in the table above on the DX7s panel, and on the DX7IID if you can. The positions of Yamaha's parameters 64 to 73 come from the repo's transcription of booklet 10, which nobody has checked against the scan. Write down each value you could read, and any that differ. If unison is missing in both orders, the layout may be at fault, not the order.</li>
+      </ol>
+      <h3>TX816 and the addendum (finding 12)</h3>
+      <ol start="13">
+        <li>While doing steps 8 and 9, watch the TF1 modules. Does an ERROR LED light? Does the green LED flash for the addendum message? Does the TX816 still play plain BRASS 1, with no change to its sound? Write down what each module did.</li>
+      </ol>
+      <h3>Optional: Dual mode on the DX7IID (finding 4)</h3>
+      <ol start="14">
+        <li>Put the DX7IID in Dual mode and tap <em>Send BRASS 1</em>. Which of A and B changed? Return to Single mode.</li>
+      </ol>
+      <h3>If a send does not arrive</h3>
+      <ol start="15">
+        <li>If a display does not change, raise the pause to 150 ms and try again. Write down the smallest pause that works.</li>
+        <li>If a setup note above was wrong, correct it here, in the spec and in the research note.</li>
+      </ol>
+    </details>
+  </section>
+
+  <p id="provenance" class="hint"></p>
+</main>
+</body>
+</html>
