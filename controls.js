@@ -167,6 +167,7 @@ export function createControls() {
       showResult(`${label} not sent. ${e instanceof SendError ? e.message : String(e)}`, true);
       return false;
     }
+    if (!plan) return false; // replaced by a newer send, which reports itself
     const time = new Date().toLocaleTimeString("en-GB");
     const count = plan.length === 1 ? "1 message" : `${plan.length} messages`;
     showResult(`${time}: ${label}, ${count}: ${describePlan(plan)}.`);

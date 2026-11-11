@@ -107,18 +107,26 @@ function listed(labels) {
 
 // Send the plan's messages on output, pauseMs apart (after each message's own
 // time on the cable). Sends queue behind each other, so two quick taps never
-// interleave. Resolves when the last message has been handed on; rejects
-// with a SendError in plain words.
+// interleave, and the pause also follows a send's last message before the
+// next send starts, so quick taps or next presses never reach an instrument
+// back to back. A send still waiting when a newer one arrives is dropped,
+// so quick next presses send only the voice they stop on. Resolves to the
+// plan when the last message has been handed on, or to null when dropped;
+// rejects with a SendError in plain words.
 let queue = Promise.resolve();
+let newest = 0;
 
 export function sendPlan(output, plan, pauseMs) {
-  const run = queue.then(() => sendNow(output, plan, pauseMs));
-  queue = run.catch(() => {});
+  const ticket = ++newest;
+  const run = queue.then(() => (ticket === newest ? sendNow(output, plan, pauseMs) : null));
+  const last = plan.at(-1);
+  const gap = last ? Math.ceil(last.bytes.length * MS_PER_BYTE) + pauseMs : 0;
+  queue = run.then((sent) => (sent ? sleep(gap) : undefined), () => {});
   return run;
 }
 
 // planSend then sendPlan with the settings' pause: what a tap on a voice does.
-// Resolves to the plan sent.
+// Resolves to the plan sent, or null when a newer send replaced it.
 export async function sendVoice(output, voice, settings, options) {
   return sendPlan(output, planSend(voice, settings, options), settings.pauseMs);
 }

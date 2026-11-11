@@ -5,12 +5,13 @@
 // makeList from any slots of the library.
 //
 // A list is { kind, title, key, entries }: kind names where it came from
-// ("bank", "search" or "favourites"), title is what the page heads it with,
+// ("bank", "search", "favourites" or "history"), title is what the page heads it with,
 // key identifies it among lists of its kind (the bank's key; the search text
 // as normalised), and entries are { bank, slot } (bank index into the
 // library, slot index from 0), in the order stepped through.
 
 import { normaliseName } from "./library.js";
+import { readStored, writeStored } from "./settings.js";
 
 function makeList(kind, title, key, entries) {
   return Object.freeze({ kind, title, key, entries: Object.freeze(entries) });
@@ -41,6 +42,44 @@ export function filterList(library, { query = "", favourites = false }) {
 export function filterOf(list) {
   if (!list || !FILTER_KINDS.includes(list.kind)) return null;
   return { query: list.key, favourites: list.kind === "favourites" };
+}
+
+// The history: the voices sent, newest first, kept in localStorage as
+// { bank (key), slot, at (ISO time) }. Sending a slot again moves it to the
+// top, so each slot appears once. Its list's entries also carry `at`.
+export const HISTORY_KEY = "dx7-app.history";
+const HISTORY_MAX = 200;
+
+function storedHistory() {
+  const kept = readStored(HISTORY_KEY, []);
+  return Array.isArray(kept)
+    ? kept.filter((h) => h && typeof h.bank === "string" && Number.isInteger(h.slot) && typeof h.at === "string")
+    : [];
+}
+
+export function recordSent(library, entry, at = new Date()) {
+  const bank = library.keyOf(entry.bank);
+  const rest = storedHistory().filter((h) => !(h.bank === bank && h.slot === entry.slot));
+  writeStored(HISTORY_KEY, [{ bank, slot: entry.slot, at: at.toISOString() }, ...rest].slice(0, HISTORY_MAX));
+}
+
+export function clearHistory() {
+  writeStored(HISTORY_KEY, []);
+}
+
+export function historyCount() {
+  return storedHistory().length;
+}
+
+// The history as a list of this library's slots (a slot whose bank this
+// library no longer has is left out).
+export function historyList(library) {
+  const entries = [];
+  for (const h of storedHistory()) {
+    const bank = library.bankAt(h.bank);
+    if (bank >= 0 && library.slot(bank, h.slot)) entries.push({ bank, slot: h.slot, at: h.at });
+  }
+  return makeList("history", "History", "", entries);
 }
 
 // The current list and the index of its current entry (-1: none yet).

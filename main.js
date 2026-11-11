@@ -6,7 +6,8 @@
 // back gesture goes up a level: { level: "origins" }, { level: "folders",
 // origin }, { level: "banks", origin, folder }, { level: "setup" }, or
 // { level: "list", kind, key } for a list of slots (kind "bank": a bank, by
-// its key; "search" or "favourites": the filter's hits, by the search text).
+// its key; "search" or "favourites": the filter's hits, by the search text;
+// "history": the voices sent, newest first).
 // The search box and the favourites toggle show the filter of the view on
 // screen; changing them replaces a filter view, or pushes one over a browsing
 // view. The current list (current-list.js) is separate: browsing elsewhere
@@ -14,7 +15,8 @@
 
 import { createControls } from "./controls.js";
 import {
-  Current, FILTER_KINDS, POSITION_KEY, bankList, filterList, filterOf, positionOf, restorePosition,
+  Current, FILTER_KINDS, POSITION_KEY, bankList, clearHistory, filterList, filterOf, historyCount,
+  historyList, positionOf, recordSent, restorePosition,
 } from "./current-list.js";
 import {
   LibraryError, UNSENDABLE, keepLibrary, keptLibrary, normaliseName, parseLibrary, randomIndex,
@@ -82,6 +84,7 @@ function listOf(v) {
     const bank = library.bankAt(v.key);
     return bank < 0 ? null : bankList(library, bank);
   }
+  if (v.kind === "history") return historyList(library);
   const filter = filterOf(v);
   return filter ? filterList(library, filter) : null;
 }
@@ -190,6 +193,30 @@ function shuffle() {
 
 $("shuffle").addEventListener("click", shuffle);
 
+// History: the voices sent, newest first. While the history is the current
+// list, its sends are not recorded, so walking it leaves its order alone.
+$("history").addEventListener("click", () => {
+  if (!library) return;
+  clearTimeout(typing);
+  const v = listView(historyList(library));
+  if (view().level === "list" && view().kind === "history") return;
+  if (isFilterView(view())) replace(v);
+  else go(v);
+});
+
+function showHistoryCount() {
+  const n = historyCount();
+  $("history-line").textContent = n ? `${plural(n, "voice")} in the history.` : "The history is empty.";
+  $("clear-history").disabled = !n;
+}
+
+$("clear-history").addEventListener("click", () => {
+  clearHistory();
+  if (current.list?.kind === "history") current.clear();
+  showHistoryCount();
+  markCurrent();
+});
+
 // Rendering.
 
 function render(v) {
@@ -200,6 +227,8 @@ function render(v) {
   $("browse").hidden = setup;
   $("filters").hidden = setup || !library;
   $("shuffle").disabled = !library;
+  $("history").disabled = !library;
+  $("history").setAttribute("aria-pressed", String(v.level === "list" && v.kind === "history"));
   $("to-setup").textContent = setup ? "Done" : "Setup";
   $("up").hidden = depth() === 0;
   $("empty").hidden = !!library;
@@ -207,6 +236,7 @@ function render(v) {
   $("more-row").hidden = true;
   showFilter(v);
   if (setup) {
+    showHistoryCount();
     window.scrollTo(0, 0);
     return;
   }
@@ -311,7 +341,24 @@ const LISTS = {
     none: (list) => (list.key ? `No favourite's name contains “${list.key}”.` : "No slot in this library is marked as a favourite."),
     detail: (entry, slot) => `${whereIs(entry.bank)} · ${slot.detail}`,
   },
+  history: {
+    context: (list) => `History: ${plural(list.entries.length, "voice")}, newest first`,
+    none: () => "Nothing sent yet. Each voice you send appears here, newest first.",
+    detail: (entry) => `${whenSent(entry.at)} · ${whereIs(entry.bank)}`,
+  },
 };
+
+// "Today 21:04", "Yesterday 09:12" or "3 Nov 2026 18:30".
+function whenSent(at) {
+  const time = new Date(at);
+  if (Number.isNaN(time.getTime())) return "";
+  const clock = time.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const day = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((day(new Date()) - day(time)) / 86400000);
+  if (days === 0) return `Today ${clock}`;
+  if (days === 1) return `Yesterday ${clock}`;
+  return `${time.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} ${clock}`;
+}
 
 // Rows up to at least count entries, in steps of ROWS, and the "more" button.
 function addRows(count) {
@@ -373,7 +420,7 @@ function markCurrent(scroll = false) {
     button.classList.toggle("current", isCurrent);
     if (isCurrent) {
       button.setAttribute("aria-current", "true");
-      if (scroll) button.scrollIntoView({ block: "nearest" });
+      if (scroll) revealRow(button);
     } else {
       button.removeAttribute("aria-current");
     }
@@ -388,6 +435,22 @@ function markCurrent(scroll = false) {
   }
   $("prev").disabled = !library || !current.canStep(-1);
   $("next").disabled = !library || !current.canStep(1);
+}
+
+// Scroll just enough that a row sits in the part of the screen the sticky
+// status line (top) and the step bar (bottom) leave clear, with a little room
+// either side so the next row along shows too.
+const REVEAL_ROOM = 24; // px
+
+function revealRow(row) {
+  const clearTop = Math.max(0, $("status").getBoundingClientRect().bottom);
+  const clearBottom = Math.min(window.innerHeight, $("bar").getBoundingClientRect().top);
+  const { top, bottom } = row.getBoundingClientRect();
+  if (bottom > clearBottom - REVEAL_ROOM) {
+    window.scrollBy(0, bottom - (clearBottom - REVEAL_ROOM));
+  } else if (top < clearTop + REVEAL_ROOM) {
+    window.scrollBy(0, top - (clearTop + REVEAL_ROOM));
+  }
 }
 
 // Sending.
@@ -415,6 +478,7 @@ function sendCurrent() {
     controls.showResult(`${label} not sent: ${UNSENDABLE}.`, true);
     return;
   }
+  if (current.list.kind !== "history") recordSent(library, entry);
   controls.send(voice, label);
 }
 

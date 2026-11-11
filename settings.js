@@ -16,8 +16,14 @@ export const TARGETS = Object.freeze([
   Object.freeze({ id: "tx816", label: "TX816", addressLabel: "Channel", addendum: false }),
 ]);
 
-export const DEFAULT_PAUSE_MS = 50;
+export const DEFAULT_PAUSE_MS = 150;
 export const MAX_PAUSE_MS = 1000;
+
+// The first published default. Settings saved before the default changed
+// (no SETTINGS_VERSION) holding it move to the new default once; a pause
+// chosen afterwards is kept, whatever it is.
+const FIRST_DEFAULT_PAUSE_MS = 50;
+const SETTINGS_VERSION = 2;
 
 export function defaultSettings() {
   return {
@@ -31,11 +37,15 @@ export function defaultSettings() {
 // missing or out of range.
 export function loadSettings() {
   const stored = readStored(SETTINGS_KEY, {});
-  return normalise(stored && typeof stored === "object" ? stored : {});
+  const settings = stored && typeof stored === "object" ? stored : {};
+  if (settings.version !== SETTINGS_VERSION && settings.pauseMs === FIRST_DEFAULT_PAUSE_MS) {
+    delete settings.pauseMs;
+  }
+  return normalise(settings);
 }
 
 export function saveSettings(settings) {
-  return writeStored(SETTINGS_KEY, normalise(settings));
+  return writeStored(SETTINGS_KEY, { ...normalise(settings), version: SETTINGS_VERSION });
 }
 
 export function normalise(settings) {

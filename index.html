@@ -32,6 +32,7 @@
       autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="search">
     <div class="filter-buttons">
       <button id="favourites" type="button" class="secondary toggle" aria-pressed="false">Favourites</button>
+      <button id="history" type="button" class="secondary toggle" aria-pressed="false" disabled>History</button>
       <button id="shuffle" type="button" class="secondary" disabled>Shuffle</button>
     </div>
   </div>
@@ -71,12 +72,17 @@
     <p id="library-line" class="hint">No library loaded.</p>
     <label class="secondary file-button" for="file">Open a library file</label>
     <p class="hint">A newer file replaces the one kept. The file stays on this phone; nothing is sent over the web.</p>
+
+    <h2 id="history-heading">History</h2>
+    <p id="history-line" class="hint">The history is empty.</p>
+    <button id="clear-history" type="button" class="secondary" disabled>Clear the history</button>
+    <p class="hint">Every voice sent, newest first, up to 200. It stays on this phone.</p>
   </section>
 
   <input id="file" type="file" accept=".json,application/json" class="visually-hidden" tabindex="-1">
 </main>
 
-<nav class="bar" aria-label="Step through the current list">
+<nav id="bar" class="bar" aria-label="Step through the current list">
   <button id="now" type="button" class="now" disabled>Nothing chosen yet</button>
   <div class="steps">
     <button id="prev" type="button" class="step" disabled>‹ Previous</button>
