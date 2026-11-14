@@ -114,6 +114,10 @@ input[type="number"], select {
 }
 
 input[type="number"] { width: 5rem; }
+
+/* A slider takes the row's width on its own line, its value beside it. */
+input[type="range"] { flex: 1 1 100%; order: 1; min-height: 2.75rem; margin: 0; accent-color: var(--accent); }
+.trial output { font-variant-numeric: tabular-nums; font-weight: 600; }
 select { flex: 1 1 12rem; max-width: 100%; }
 
 table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
@@ -255,3 +259,6 @@ button.secondary:disabled { color: var(--muted); cursor: default; }
 
 button.more { width: 100%; margin-top: 0.75rem; }
 #setup h2:first-child { margin-top: 1rem; }
+
+.head-buttons { display: flex; gap: 0.5rem; }
+button.send:disabled { background: var(--line); color: var(--muted); cursor: default; }

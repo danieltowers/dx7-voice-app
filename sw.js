@@ -1,7 +1,7 @@
 // The service worker: keeps the shell, every file of app/, in a cache named
 // for the shell's version, so the installed app opens, browses and sends with
-// the network off. It answers only requests to the shell's own origin; the
-// shell asks for nothing else.
+// the network off. It answers only requests to the shell's own origin for
+// the shell's files; a request to any other origin is left alone.
 //
 // SHELL_VERSION is stamped by scripts/publish_shell.py with a digest of the
 // other shell files, so every publish of a changed shell is a new worker and
@@ -15,7 +15,7 @@
 // straight from app/ while developing), it is fetched from the network first,
 // so an edit shows on reload, with the cache as the fallback offline.
 
-const SHELL_VERSION = "d5b85e1fbe5a";
+const SHELL_VERSION = "9bc07fac87bd";
 const PREFIX = "dx7-shell-";
 const CACHE = `${PREFIX}${SHELL_VERSION}`;
 const NETWORK_FIRST = SHELL_VERSION === "unpublished";
@@ -35,6 +35,7 @@ const SHELL = [
   "library.js",
   "main.js",
   "manifest.json",
+  "parameter-change.js",
   "send.js",
   "settings.js",
   "setup-notes.js",
@@ -63,6 +64,7 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET" || new URL(request.url).origin !== self.location.origin) return;
+  if (request.headers.has("X-Access-Code")) return;
   event.respondWith(NETWORK_FIRST ? networkFirst(request) : cacheFirst(request));
 });
 

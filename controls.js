@@ -1,6 +1,7 @@
 // The controls every sending page shares: the status line, the MIDI port and
-// its chooser, the target toggles and addresses, the pause, and a send that
-// reports on the status line. A page provides elements with these ids:
+// its chooser, the target toggles and addresses, the pause, a send that
+// reports on the status line, and a parameter change that reports only when
+// it fails. A page provides elements with these ids:
 //
 //   port-line, result-line      the two lines of the status line
 //   output-row, output          the chooser row (shown with two or more outputs)
@@ -10,7 +11,10 @@
 // The settings themselves live in settings.js, the messages in send.js.
 
 import { TARGETS, loadSettings, normalise, saveSettings } from "./settings.js";
-import { SendError, chooseOutput, describePlan, noOutputMessage, openMidi, outputsOf, sendVoice } from "./send.js";
+import { CHANGE_PAUSE_MS, ChangeRefused, planChange } from "./parameter-change.js";
+import {
+  SendError, chooseOutput, describePlan, noOutputMessage, openMidi, outputsOf, sendChange, sendVoice,
+} from "./send.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -174,7 +178,30 @@ export function createControls() {
     return true;
   }
 
+  // Set one control of the voice in the targets' edit buffers to value, as a
+  // parameter change to the targets that are on (parameter-change.js). The
+  // status line stays quiet when it goes out, so a drag does not fill it;
+  // when it cannot go, the status line says why, naming label (what the
+  // value was to show, "Operator 1 coarse 2.00"). Asks for MIDI first when it
+  // has not been asked for yet. Resolves true when sent, false when not sent
+  // or replaced by a newer change to the same parameter.
+  async function change(control, value, label) {
+    if (!access) await openOnce();
+    if (!output) {
+      showResult(`${label} not sent. ${access ? noOutputMessage(outputsOf(access)) : "MIDI is not open."}`, true);
+      return false;
+    }
+    try {
+      const plan = planChange(control, value, settings);
+      return (await sendChange(output, control.parameter, plan, CHANGE_PAUSE_MS)) !== null;
+    } catch (e) {
+      const why = e instanceof SendError || e instanceof ChangeRefused ? e.message : String(e);
+      showResult(`${label} not sent. ${why}`, true);
+      return false;
+    }
+  }
+
   renderTargets();
 
-  return { send, showResult };
+  return { send, change, showResult };
 }

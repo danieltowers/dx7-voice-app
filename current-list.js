@@ -47,6 +47,19 @@ export function filterOf(list) {
 // The history: the voices sent, newest first, kept in localStorage as
 // { bank (key), slot, at (ISO time) }. Sending a slot again moves it to the
 // top, so each slot appears once. Its list's entries also carry `at`.
+// When a voice was sent, for the history: "Today 21:04", "Yesterday 09:12"
+// or "3 Nov 2026 18:30".
+export function whenAt(at) {
+  const time = new Date(at);
+  if (Number.isNaN(time.getTime())) return "";
+  const clock = time.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const day = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((day(new Date()) - day(time)) / 86400000);
+  if (days === 0) return `Today ${clock}`;
+  if (days === 1) return `Yesterday ${clock}`;
+  return `${time.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} ${clock}`;
+}
+
 export const HISTORY_KEY = "dx7-app.history";
 const HISTORY_MAX = 200;
 

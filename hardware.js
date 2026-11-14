@@ -1,7 +1,9 @@
-// The hardware page: three buttons that send fixed voices to the targets.
+// The hardware page: three buttons that send fixed voices to the targets,
+// and a trial slider that sends parameter changes over BRASS 1.
 
 import fixed from "./fixed-messages.js";
 import { createControls } from "./controls.js";
+import { CONTROLS, startingValue } from "./parameter-change.js";
 import { ADDENDUM_FIRST, HEADER_SIZE, TRAILER_SIZE, addendumMessage, voiceMessage } from "./send.js";
 import { showSetupNotes } from "./setup-notes.js";
 import { keepShell } from "./shell.js";
@@ -54,6 +56,39 @@ $("send-addendum-first").addEventListener("click", () =>
   send(voices.addendum, "BRASS 1 +A, addendum first", { addendumFirst: true }));
 $("send-voice-first").addEventListener("click", () =>
   send(voices.addendum, "BRASS 1 +A, voice first", { addendumFirst: false }));
+
+// The trial: operator 1 coarse over BRASS 1, as parameter changes. The
+// slider sends only when it lands on a new whole value, so a drag across the
+// range sends each value at most once.
+
+const trial = CONTROLS[0];
+const slider = $("trial-slider");
+let trialValue = startingValue(trial, voices.core.voice);
+
+function trialLabel(value) {
+  return trial.label(value, voices.core.voice);
+}
+
+function showTrial() {
+  const label = trialLabel(Number(slider.value));
+  $("trial-value").textContent = label;
+  slider.setAttribute("aria-valuetext", label);
+}
+
+const range = trial.range(voices.core.voice);
+slider.min = range.min;
+slider.max = range.max;
+slider.value = trialValue;
+slider.disabled = !assembled;
+showTrial();
+
+slider.addEventListener("input", () => {
+  showTrial();
+  const value = Number(slider.value);
+  if (value === trialValue) return;
+  trialValue = value;
+  controls.change(trial, value, `${trial.name} ${trialLabel(value)}`);
+});
 
 // The rest of the page.
 

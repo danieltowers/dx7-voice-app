@@ -16,7 +16,7 @@
 import { createControls } from "./controls.js";
 import {
   Current, FILTER_KINDS, POSITION_KEY, bankList, clearHistory, filterList, filterOf, historyCount,
-  historyList, positionOf, recordSent, restorePosition,
+  historyList, positionOf, recordSent, restorePosition, whenAt,
 } from "./current-list.js";
 import {
   LibraryError, UNSENDABLE, keepLibrary, keptLibrary, normaliseName, parseLibrary, randomIndex,
@@ -29,7 +29,7 @@ const $ = (id) => document.getElementById(id);
 
 const controls = createControls();
 const current = new Current();
-let library = null;
+let library = null; // the library file's, as loaded
 let shown = null; // the list on screen, when the view is a list
 let rendered = 0; // how many of its entries have rows
 
@@ -344,21 +344,9 @@ const LISTS = {
   history: {
     context: (list) => `History: ${plural(list.entries.length, "voice")}, newest first`,
     none: () => "Nothing sent yet. Each voice you send appears here, newest first.",
-    detail: (entry) => `${whenSent(entry.at)} · ${whereIs(entry.bank)}`,
+    detail: (entry) => `${whenAt(entry.at)} · ${whereIs(entry.bank)}`,
   },
 };
-
-// "Today 21:04", "Yesterday 09:12" or "3 Nov 2026 18:30".
-function whenSent(at) {
-  const time = new Date(at);
-  if (Number.isNaN(time.getTime())) return "";
-  const clock = time.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-  const day = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const days = Math.round((day(new Date()) - day(time)) / 86400000);
-  if (days === 0) return `Today ${clock}`;
-  if (days === 1) return `Yesterday ${clock}`;
-  return `${time.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} ${clock}`;
-}
 
 // Rows up to at least count entries, in steps of ROWS, and the "more" button.
 function addRows(count) {
@@ -404,7 +392,7 @@ function slotRow(list, index) {
 
 // Where a bank was published, for a hit: "Original Yamaha/DX7 ROM1 › ROM1A"
 // (its cartridge or folder, or its origin when it has none, then its name);
-// a build's folder is its name, so a build says its name once.
+// a bank named as its folder says its name once.
 function whereIs(bank) {
   const b = library.banks[bank];
   const place = b.folder || b.origin;
@@ -492,11 +480,14 @@ $("up").addEventListener("click", () => history.back());
 $("now").addEventListener("click", () => {
   if (current.list) go(listView(current.list));
 });
-$("to-setup").addEventListener("click", () => {
-  if (view().level !== "setup") go(SETUP);
+// Setup opens over the view on screen, and its Done button goes back to it.
+function toggleSetup() {
+  if (view().level !== SETUP.level) go(SETUP);
   else if (depth() > 0) history.back();
   else replace(ORIGINS);
-});
+}
+
+$("to-setup").addEventListener("click", toggleSetup);
 window.addEventListener("popstate", (e) => render(e.state?.view ?? ORIGINS));
 
 // Loading the library.
@@ -507,14 +498,20 @@ function describe(fileName, exported) {
   return `${fileName ?? "The library"}${exported ? `, exported ${exported}` : ""}: ${voices} voices in ${banks} banks.`;
 }
 
-// Use a checked library: restore the kept position in it and show its list,
-// or the origins when there is none.
+// Use a checked library file (or none, null): restore the kept position in
+// it and show its list, or the origins when there is none.
 function use(next, fileName) {
   library = next;
-  $("library-line").textContent = describe(fileName, library.exported);
+  if (next) $("library-line").textContent = describe(fileName, next.exported);
+  if (!library) {
+    current.clear();
+    resetHistory([ORIGINS]);
+    markCurrent();
+    return;
+  }
   // Build the search index while the page is idle, so the first search is as
   // quick as the rest.
-  (window.requestIdleCallback ?? setTimeout)(() => void next.index);
+  (window.requestIdleCallback ?? setTimeout)(() => void library.index);
   const restored = restorePosition(library, readStored(POSITION_KEY));
   if (restored) {
     current.set(restored.list, restored.index);
@@ -557,18 +554,13 @@ $("file").addEventListener("change", async () => {
 async function start() {
   showSetupNotes($("setup-notes"));
   keepShell();
+  let kept = null;
   try {
-    const kept = await keptLibrary();
-    if (kept) {
-      use(kept.library, kept.fileName);
-      return;
-    }
+    kept = await keptLibrary();
   } catch (e) {
     controls.showResult(e instanceof LibraryError ? e.message : `The kept library could not be read: ${e?.message ?? e}`, true);
   }
-  library = null;
-  resetHistory([ORIGINS]);
-  markCurrent();
+  use(kept?.library ?? null, kept?.fileName);
 }
 
 start();

@@ -8,7 +8,7 @@
 // from the dx7 core; this module adds only the header, the address nibble,
 // the checksum and the end byte (research/sysex-reception.md).
 
-import { TARGETS } from "./settings.js";
+import { byAddress, targetsOn } from "./settings.js";
 
 // The order on the DX7s and the DX7IID when a voice has an addendum: true
 // sends the addendum message(s) first, then the voice message(s). The manuals
@@ -69,12 +69,12 @@ function message(header, data, size, address) {
 
 // The messages that send a voice to the targets that are on, in order. One
 // message per distinct header byte: with every address at 1, one voice
-// message reaches all three instruments. The addendum goes to each distinct
-// DX7s/DX7IID address (never on behalf of the TX816), before or after the
-// voice messages as order says. Each step is { kind, address, targets, bytes },
-// targets being the labels it is meant for.
+// message reaches every target that is on. The addendum goes to each distinct
+// DX7s/DX7IID address (never on behalf of the TX816 or the fourth target),
+// before or after the voice messages as order says. Each step is { kind,
+// address, targets, bytes }, targets being the labels it is meant for.
 export function planSend(voice, settings, { addendumFirst = ADDENDUM_FIRST } = {}) {
-  const on = TARGETS.filter((t) => settings.targets[t.id]?.on);
+  const on = targetsOn(settings);
   const voices = byAddress(on, settings).map(([address, targets]) => ({
     kind: "voice", address, targets, bytes: voiceMessage(voice.voice, address),
   }));
@@ -84,16 +84,6 @@ export function planSend(voice, settings, { addendumFirst = ADDENDUM_FIRST } = {
       }))
     : [];
   return addendumFirst ? [...addenda, ...voices] : [...voices, ...addenda];
-}
-
-function byAddress(targets, settings) {
-  const groups = new Map();
-  for (const t of targets) {
-    const address = settings.targets[t.id].address;
-    if (!groups.has(address)) groups.set(address, []);
-    groups.get(address).push(t.label);
-  }
-  return [...groups];
 }
 
 // "addendum to DX7s and DX7IID at 1, then voice to DX7s, DX7IID and TX816 at 1"
@@ -110,15 +100,34 @@ function listed(labels) {
 // interleave, and the pause also follows a send's last message before the
 // next send starts, so quick taps or next presses never reach an instrument
 // back to back. A send still waiting when a newer one arrives is dropped,
-// so quick next presses send only the voice they stop on. Resolves to the
-// plan when the last message has been handed on, or to null when dropped;
-// rejects with a SendError in plain words.
+// so quick next presses send only the voice they stop on. Parameter changes
+// (sendChange) share the queue but neither drop a voice send nor are dropped
+// by one. Resolves to the plan when the last message has been handed on, or
+// to null when dropped; rejects with a SendError in plain words.
 let queue = Promise.resolve();
-let newest = 0;
+let newestVoice = null;
+const newestChange = new Map(); // parameter number -> its newest change
 
 export function sendPlan(output, plan, pauseMs) {
-  const ticket = ++newest;
-  const run = queue.then(() => (ticket === newest ? sendNow(output, plan, pauseMs) : null));
+  const ticket = {};
+  newestVoice = ticket;
+  return enqueue(() => ticket === newestVoice, output, plan, pauseMs);
+}
+
+// Put a parameter change's plan (parameter-change.js, planChange) on the same
+// queue: it waits for a voice send in progress and that send's closing
+// pause. Of several changes to one parameter still waiting, only the newest
+// is sent; the others resolve to null. pauseMs separates the plan's own
+// messages (one per address) and follows the last; by default there is no
+// pause, only each message's time on the cable.
+export function sendChange(output, parameter, plan, pauseMs = 0) {
+  const ticket = {};
+  newestChange.set(parameter, ticket);
+  return enqueue(() => newestChange.get(parameter) === ticket, output, plan, pauseMs);
+}
+
+function enqueue(isNewest, output, plan, pauseMs) {
+  const run = queue.then(() => (isNewest() ? sendNow(output, plan, pauseMs) : null));
   const last = plan.at(-1);
   const gap = last ? Math.ceil(last.bytes.length * MS_PER_BYTE) + pauseMs : 0;
   queue = run.then((sent) => (sent ? sleep(gap) : undefined), () => {});
@@ -133,7 +142,7 @@ export async function sendVoice(output, voice, settings, options) {
 
 async function sendNow(output, plan, pauseMs) {
   if (!output) throw new SendError("No MIDI output is chosen.");
-  if (plan.length === 0) throw new SendError("No target is on: turn on the DX7s, the DX7IID or the TX816.");
+  if (plan.length === 0) throw new SendError("No target is on: turn on at least one target.");
   for (const [i, step] of plan.entries()) {
     if (output.state === "disconnected") throw new SendError(gone(output));
     try {

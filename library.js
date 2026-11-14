@@ -57,7 +57,7 @@ function checkFixture(doc) {
   if (at >= 0) throw refused(`byte ${at} differs`);
 }
 
-function fromBase64(base64) {
+export function fromBase64(base64) {
   return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
 }
 

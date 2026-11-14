@@ -1,4 +1,4 @@
-// Settings shared by every page of the app: the MIDI port, the three targets
+// Settings shared by every page of the app: the MIDI port, the four targets
 // with their addresses, and the pause between messages. Kept in localStorage
 // under one key, so the hardware page and the library page read and write the
 // same thing. Storage can be missing or refuse (private window, site data
@@ -6,15 +6,36 @@
 
 export const SETTINGS_KEY = "dx7-app.settings";
 
-// The targets, in the order the pages show them. address is the device
-// number on the DX7s and DX7IID and the receive channel on the TX816; the
-// header byte carries it the same way. Only the DX7s and DX7IID take the
-// DX7II addendum.
+// The targets, in the order the pages show them: Daniel's three, on by
+// default, and a fourth for anyone else's instrument, off by default. address
+// is the device number on the DX7s and DX7IID and the receive channel on the
+// TX816 (and on an original DX7); the header byte carries it the same way.
+// Only the DX7s and DX7IID take the DX7II addendum; the fourth target gets the
+// core only, whatever its instrument.
 export const TARGETS = Object.freeze([
-  Object.freeze({ id: "dx7s", label: "DX7s", addressLabel: "Device number", addendum: true }),
-  Object.freeze({ id: "dx7iid", label: "DX7IID", addressLabel: "Device number", addendum: true }),
-  Object.freeze({ id: "tx816", label: "TX816", addressLabel: "Channel", addendum: false }),
+  Object.freeze({ id: "dx7s", label: "DX7s", addressLabel: "Device number", addendum: true, on: true }),
+  Object.freeze({ id: "dx7iid", label: "DX7IID", addressLabel: "Device number", addendum: true, on: true }),
+  Object.freeze({ id: "tx816", label: "TX816", addressLabel: "Channel", addendum: false, on: true }),
+  Object.freeze({ id: "other", label: "another DX7 or Dexed", addressLabel: "Address", addendum: false, on: false }),
 ]);
+
+// The given targets grouped by the address each is set to, in the order the
+// addresses first appear: [[address, [label, ...]], ...]. One message per
+// group reaches every target in it.
+export function byAddress(targets, settings) {
+  const groups = new Map();
+  for (const t of targets) {
+    const address = settings.targets[t.id].address;
+    if (!groups.has(address)) groups.set(address, []);
+    groups.get(address).push(t.label);
+  }
+  return [...groups];
+}
+
+// The targets that are switched on, in the order the pages show them.
+export function targetsOn(settings) {
+  return TARGETS.filter((t) => settings.targets[t.id]?.on);
+}
 
 export const DEFAULT_PAUSE_MS = 150;
 export const MAX_PAUSE_MS = 1000;
@@ -28,7 +49,7 @@ const SETTINGS_VERSION = 2;
 export function defaultSettings() {
   return {
     port: null, // the chosen MIDI output's name; null until one is chosen
-    targets: Object.fromEntries(TARGETS.map((t) => [t.id, { on: true, address: 1 }])),
+    targets: Object.fromEntries(TARGETS.map((t) => [t.id, { on: t.on, address: 1 }])),
     pauseMs: DEFAULT_PAUSE_MS,
   };
 }

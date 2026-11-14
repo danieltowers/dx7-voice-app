@@ -31,6 +31,23 @@
     <p class="hint">The library app will send the addendum <strong id="order-now">first</strong>, until this check says otherwise.</p>
   </section>
 
+  <section aria-labelledby="trial-heading">
+    <h2 id="trial-heading">Trial: a parameter change</h2>
+    <p class="hint">Tap <em>Send BRASS 1</em> above first: the slider changes one parameter of the voice already in each edit buffer, so every instrument must hold BRASS 1. Each new position goes at once, as a parameter change, to the targets that are on; nothing else in the voice changes, and nothing stored.</p>
+    <div class="row trial">
+      <label for="trial-slider">Operator 1 coarse</label>
+      <input id="trial-slider" type="range" step="1">
+      <output id="trial-value" for="trial-slider"></output>
+    </div>
+    <p class="hint">BRASS 1's own value is 0.50. Operator 1 is a carrier, so the pitch of that part of the sound moves: 1.00 is an octave above 0.50, 2.00 another octave.</p>
+    <p class="hint">For each instrument (the DX7s, the DX7IID, the TX816), write down three things in <code>research/sysex-reception.md</code>:</p>
+    <ol class="hint">
+      <li><strong>Accepted:</strong> does a new position change the sound (and the display, or the TF1's green Parameter Change LED), or does nothing happen?</li>
+      <li><strong>Held note or next note:</strong> hold a note and move the slider one step. Does the held note change, or only the next note you play?</li>
+      <li><strong>Fast drag:</strong> drag quickly from one end to the other and back, then stop. Any glitch, stuck note or dropped change? Does the sound settle on the value shown? If it does not, try a slower drag and say how slow works.</li>
+    </ol>
+  </section>
+
   <section aria-labelledby="targets-heading">
     <h2 id="targets-heading">MIDI output and targets</h2>
     <div id="output-row" class="row" hidden>
