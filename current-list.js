@@ -70,10 +70,19 @@ function storedHistory() {
     : [];
 }
 
-export function recordSent(library, entry, at = new Date()) {
+function recordSent(library, entry, at) {
   const bank = library.keyOf(entry.bank);
   const rest = storedHistory().filter((h) => !(h.bank === bank && h.slot === entry.slot));
   writeStored(HISTORY_KEY, [{ bank, slot: entry.slot, at: at.toISOString() }, ...rest].slice(0, HISTORY_MAX));
+}
+
+// A send of a voice, entry of the current list list, as the history notes it:
+// at the top, at time at; except while the history is the current list, so
+// walking it leaves its order alone. (A Reset, which sends the voice last
+// sent again, already in the history, is not a send to note.)
+export function noteSent(library, list, entry, at = new Date()) {
+  if (list.kind === "history") return;
+  recordSent(library, entry, at);
 }
 
 export function clearHistory() {

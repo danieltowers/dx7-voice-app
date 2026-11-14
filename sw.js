@@ -15,7 +15,7 @@
 // straight from app/ while developing), it is fetched from the network first,
 // so an edit shows on reload, with the cache as the fallback offline.
 
-const SHELL_VERSION = "9bc07fac87bd";
+const SHELL_VERSION = "7564fd5d7dc7";
 const PREFIX = "dx7-shell-";
 const CACHE = `${PREFIX}${SHELL_VERSION}`;
 const NETWORK_FIRST = SHELL_VERSION === "unpublished";
@@ -25,6 +25,8 @@ const SHELL = [
   "./",
   "controls.js",
   "current-list.js",
+  "drawer.js",
+  "edit.js",
   "fixed-messages.js",
   "hardware.html",
   "hardware.js",

@@ -84,12 +84,31 @@
   <input id="file" type="file" accept=".json,application/json" class="visually-hidden" tabindex="-1">
 </main>
 
+<div id="dock" class="dock">
+<section id="drawer" class="drawer" aria-labelledby="drawer-title" hidden>
+  <div class="drawer-head">
+    <div class="drawer-names">
+      <p class="view-context">Edit, heard on the targets that are on</p>
+      <h2 id="drawer-title"></h2>
+    </div>
+    <button id="close-drawer" type="button" class="secondary">Close</button>
+  </div>
+  <p id="drawer-note" class="drawer-note" hidden></p>
+  <div id="drawer-controls"></div>
+  <p class="drawer-actions"><button id="reset" type="button" class="secondary" disabled>Reset</button></p>
+  <p class="hint">An edit lives only in the instruments' edit buffers: sending any voice replaces it, Reset sends this one again as published, and nothing is saved.</p>
+</section>
+
 <nav id="bar" class="bar" aria-label="Step through the current list">
-  <button id="now" type="button" class="now" disabled>Nothing chosen yet</button>
+  <div class="now-row">
+    <button id="now" type="button" class="now" disabled>Nothing chosen yet</button>
+    <button id="edit" type="button" class="secondary edit" aria-controls="drawer" aria-expanded="false" disabled>Edit</button>
+  </div>
   <div class="steps">
     <button id="prev" type="button" class="step" disabled>‹ Previous</button>
     <button id="next" type="button" class="step" disabled>Next ›</button>
   </div>
 </nav>
+</div>
 </body>
 </html>

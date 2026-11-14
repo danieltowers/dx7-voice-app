@@ -117,13 +117,21 @@ export function sendPlan(output, plan, pauseMs) {
 // Put a parameter change's plan (parameter-change.js, planChange) on the same
 // queue: it waits for a voice send in progress and that send's closing
 // pause. Of several changes to one parameter still waiting, only the newest
-// is sent; the others resolve to null. pauseMs separates the plan's own
-// messages (one per address) and follows the last; by default there is no
-// pause, only each message's time on the cable.
-export function sendChange(output, parameter, plan, pauseMs = 0) {
+// is sent; the others resolve to null. pauseMs (parameter-change.js,
+// CHANGE_PAUSE_MS) separates the plan's own messages (one per address) and
+// follows the last, after each message's time on the cable.
+export function sendChange(output, parameter, plan, pauseMs) {
   const ticket = {};
   newestChange.set(parameter, ticket);
   return enqueue(() => newestChange.get(parameter) === ticket, output, plan, pauseMs);
+}
+
+// A change to parameter failed before it reached the queue (no output, say).
+// It still counts as the newest: a change to the parameter still waiting is
+// dropped, as a newer change would drop it, so the instruments keep the
+// value they last received, the one the slider goes back to.
+export function dropWaitingChange(parameter) {
+  newestChange.set(parameter, {});
 }
 
 function enqueue(isNewest, output, plan, pauseMs) {

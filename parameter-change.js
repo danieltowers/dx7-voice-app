@@ -18,18 +18,23 @@ export const CHANGE_PAUSE_MS = 0;
 // A message or a change that cannot be made, in plain words.
 export class ChangeRefused extends Error {}
 
+// Whether value is a whole number from min to max.
+export function isWholeIn(value, min, max) {
+  return Number.isInteger(value) && value >= min && value <= max;
+}
+
 // Yamaha's parameter change, seven bytes: F0 43 1n gg pp vv F7. n is the
 // address minus one, as in a single-voice message; gg is 0gggggpp, the
 // group (0, the voice parameters) and the parameter number's top two bits;
 // pp its low seven bits; vv the value.
 export function parameterChangeMessage(parameter, value, address) {
-  if (!Number.isInteger(parameter) || parameter < 0 || parameter > LAST_VOICE_PARAMETER) {
+  if (!isWholeIn(parameter, 0, LAST_VOICE_PARAMETER)) {
     throw new ChangeRefused(`parameter ${parameter} is not a voice parameter (0 to ${LAST_VOICE_PARAMETER})`);
   }
-  if (!Number.isInteger(value) || value < 0 || value > 127) {
+  if (!isWholeIn(value, 0, 127)) {
     throw new ChangeRefused(`value ${value} is not from 0 to 127`);
   }
-  if (!Number.isInteger(address) || address < 1 || address > 16) {
+  if (!isWholeIn(address, 1, 16)) {
     throw new ChangeRefused(`address ${address} is not from 1 to 16`);
   }
   return Uint8Array.from([
@@ -43,7 +48,7 @@ export function parameterChangeMessage(parameter, value, address) {
 // { kind: "change", parameter, value, address, targets, bytes }, targets
 // being the labels it is meant for. No target on gives no step.
 export function planChange(control, value, settings) {
-  if (!Number.isInteger(value) || value < control.min || value > control.max) {
+  if (!isWholeIn(value, control.min, control.max)) {
     throw new ChangeRefused(`${control.name} ${value} is not from ${control.min} to ${control.max}.`);
   }
   return byAddress(targetsOn(settings), settings).map(([address, targets]) => ({

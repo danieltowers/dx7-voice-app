@@ -12,11 +12,16 @@
 // screen; changing them replaces a filter view, or pushes one over a browsing
 // view. The current list (current-list.js) is separate: browsing elsewhere
 // leaves it, and next and previous still step through it.
+//
+// The Edit drawer (drawer.js) opens over the view on screen as a history
+// entry of its own, the same view with drawer set; a replace keeps it.
 
 import { createControls } from "./controls.js";
+import { createDrawer } from "./drawer.js";
+import { Edit } from "./edit.js";
 import {
   Current, FILTER_KINDS, POSITION_KEY, bankList, clearHistory, filterList, filterOf, historyCount,
-  historyList, positionOf, recordSent, restorePosition, whenAt,
+  historyList, noteSent, positionOf, restorePosition, whenAt,
 } from "./current-list.js";
 import {
   LibraryError, UNSENDABLE, keepLibrary, keptLibrary, normaliseName, parseLibrary, randomIndex,
@@ -29,7 +34,10 @@ const $ = (id) => document.getElementById(id);
 
 const controls = createControls();
 const current = new Current();
+const edit = new Edit(); // the edit of the voice last sent, never stored
+const drawer = createDrawer({ edit, controls, reset: () => sendCurrent({ reset: true }) });
 let library = null; // the library file's, as loaded
+let onScreen = null; // the view rendered
 let shown = null; // the list on screen, when the view is a list
 let rendered = 0; // how many of its entries have rows
 
@@ -39,7 +47,10 @@ const TIERS = { love: "Love", like: "Like" };
 const ROWS = 100; // rows added at a time to a long list (a search for "A" has tens of thousands)
 const TYPING_MS = 200; // the search runs this long after the last key
 
-// Views and history.
+// Views and history. The page places the scroll itself (render goes to the
+// top), so closing the drawer by the back gesture leaves the list where it was.
+
+history.scrollRestoration = "manual";
 
 function depth() {
   return history.state?.depth ?? 0;
@@ -54,9 +65,14 @@ function go(next) {
   render(next);
 }
 
+// In place of the view on screen, the drawer staying open over it.
 function replace(next) {
-  history.replaceState({ view: next, depth: depth() }, "");
+  history.replaceState({ ...history.state, view: next, depth: depth() }, "");
   render(next);
+}
+
+function sameView(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 // From the top to a bank: the views passed through, skipping a folder list
@@ -212,7 +228,11 @@ function showHistoryCount() {
 
 $("clear-history").addEventListener("click", () => {
   clearHistory();
-  if (current.list?.kind === "history") current.clear();
+  if (current.list?.kind === "history") {
+    current.clear();
+    edit.clear();
+    drawer.show();
+  }
   showHistoryCount();
   markCurrent();
 });
@@ -220,6 +240,8 @@ $("clear-history").addEventListener("click", () => {
 // Rendering.
 
 function render(v) {
+  onScreen = v;
+  drawer.show();
   shown = null;
   rendered = 0;
   const setup = v.level === "setup";
@@ -426,13 +448,14 @@ function markCurrent(scroll = false) {
 }
 
 // Scroll just enough that a row sits in the part of the screen the sticky
-// status line (top) and the step bar (bottom) leave clear, with a little room
+// status line (top) and the dock (bottom: the step bar, and the Edit drawer
+// when it is open) leave clear, with a little room
 // either side so the next row along shows too.
 const REVEAL_ROOM = 24; // px
 
 function revealRow(row) {
   const clearTop = Math.max(0, $("status").getBoundingClientRect().bottom);
-  const clearBottom = Math.min(window.innerHeight, $("bar").getBoundingClientRect().top);
+  const clearBottom = Math.min(window.innerHeight, $("dock").getBoundingClientRect().top);
   const { top, bottom } = row.getBoundingClientRect();
   if (bottom > clearBottom - REVEAL_ROOM) {
     window.scrollBy(0, bottom - (clearBottom - REVEAL_ROOM));
@@ -451,7 +474,10 @@ function labelOf(entry) {
   return `${name} (${library.banks[entry.bank].name} slot ${slot.number})`;
 }
 
-function sendCurrent() {
+// Send the current voice as published: a tap, next, previous, shuffle, or
+// Reset (reset true), which sends the voice last sent again and is not noted
+// in the history.
+function sendCurrent({ reset = false } = {}) {
   const entry = current.entry;
   if (!library) {
     controls.showResult("Not sent: no library is loaded. Open the library file first.", true);
@@ -462,12 +488,18 @@ function sendCurrent() {
   markCurrent(true);
   const label = labelOf(entry);
   const voice = library.sendableVoice(entry.bank, entry.slot);
+  // Every send replaces the edit; the controls come on once it has gone out.
+  const sending = edit.begin(label, voice?.voice ?? null);
+  drawer.show();
   if (!voice) {
     controls.showResult(`${label} not sent: ${UNSENDABLE}.`, true);
     return;
   }
-  if (current.list.kind !== "history") recordSent(library, entry);
-  controls.send(voice, label);
+  if (!reset) noteSent(library, current.list, entry);
+  controls.send(voice, label).then((sent) => {
+    edit.settle(sending, sent);
+    drawer.show();
+  });
 }
 
 function step(delta) {
@@ -488,7 +520,16 @@ function toggleSetup() {
 }
 
 $("to-setup").addEventListener("click", toggleSetup);
-window.addEventListener("popstate", (e) => render(e.state?.view ?? ORIGINS));
+
+// Opening or closing the drawer leaves the view under it as it was, scroll
+// position included. The drawer may rewrite the entry the history moved to,
+// so the view is read from it after.
+window.addEventListener("popstate", () => {
+  drawer.popped();
+  const v = view();
+  if (sameView(v, onScreen)) drawer.show();
+  else render(v);
+});
 
 // Loading the library.
 
@@ -502,6 +543,7 @@ function describe(fileName, exported) {
 // it and show its list, or the origins when there is none.
 function use(next, fileName) {
   library = next;
+  edit.clear(); // nothing of the new library has been sent yet
   if (next) $("library-line").textContent = describe(fileName, next.exported);
   if (!library) {
     current.clear();

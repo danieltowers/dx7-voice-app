@@ -13,7 +13,8 @@
 import { TARGETS, loadSettings, normalise, saveSettings } from "./settings.js";
 import { CHANGE_PAUSE_MS, ChangeRefused, planChange } from "./parameter-change.js";
 import {
-  SendError, chooseOutput, describePlan, noOutputMessage, openMidi, outputsOf, sendChange, sendVoice,
+  SendError, chooseOutput, describePlan, dropWaitingChange, noOutputMessage, openMidi, outputsOf, sendChange,
+  sendVoice,
 } from "./send.js";
 
 const $ = (id) => document.getElementById(id);
@@ -183,21 +184,29 @@ export function createControls() {
   // status line stays quiet when it goes out, so a drag does not fill it;
   // when it cannot go, the status line says why, naming label (what the
   // value was to show, "Operator 1 coarse 2.00"). Asks for MIDI first when it
-  // has not been asked for yet. Resolves true when sent, false when not sent
-  // or replaced by a newer change to the same parameter.
+  // has not been asked for yet. Resolves true when sent, false when not sent,
+  // and null when a newer change to the same parameter replaced it. One that
+  // fails before it is queued still replaces an older change to the
+  // parameter that is waiting, so the slider and the instruments agree.
   async function change(control, value, label) {
     if (!access) await openOnce();
-    if (!output) {
-      showResult(`${label} not sent. ${access ? noOutputMessage(outputsOf(access)) : "MIDI is not open."}`, true);
-      return false;
-    }
-    try {
-      const plan = planChange(control, value, settings);
-      return (await sendChange(output, control.parameter, plan, CHANGE_PAUSE_MS)) !== null;
-    } catch (e) {
+    const notSent = (e) => {
       const why = e instanceof SendError || e instanceof ChangeRefused ? e.message : String(e);
       showResult(`${label} not sent. ${why}`, true);
       return false;
+    };
+    let plan;
+    try {
+      if (!output) throw new SendError(access ? noOutputMessage(outputsOf(access)) : "MIDI is not open.");
+      plan = planChange(control, value, settings);
+    } catch (e) {
+      dropWaitingChange(control.parameter);
+      return notSent(e);
+    }
+    try {
+      return (await sendChange(output, control.parameter, plan, CHANGE_PAUSE_MS)) === null ? null : true;
+    } catch (e) {
+      return notSent(e);
     }
   }
 
