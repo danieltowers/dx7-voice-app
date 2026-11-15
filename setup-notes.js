@@ -1,6 +1,5 @@
 // The panel settings that matter, per instrument, and the Timepiece routing:
-// the one copy of the wording, shown by the library page's setup view and the
-// hardware page. Verbatim from the spec's user story 18 (the instrument's name
+// the one copy of the wording, shown by the help page and the hardware page. Verbatim from the spec's user story 18 (the instrument's name
 // standing as the heading of its note) and ticket 05, with the fourth target's
 // note added later; a line after the first spells
 // a note out. If a note proves wrong on the hardware, correct it here,

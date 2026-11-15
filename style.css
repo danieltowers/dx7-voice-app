@@ -78,7 +78,7 @@ button.send {
   text-align: left;
 }
 
-button.secondary {
+button.secondary, a.link-button {
   min-height: 2.75rem;
   padding: 0.5rem 1rem;
   border: 1px solid var(--line);
@@ -86,7 +86,15 @@ button.secondary {
   color: var(--fg);
 }
 
-button:active { filter: brightness(0.9); }
+/* A link that looks like a secondary button (the library page's Help). */
+a.link-button {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 10px;
+  text-decoration: none;
+}
+
+button:active, a.link-button:active { filter: brightness(0.9); }
 
 .row {
   display: flex;

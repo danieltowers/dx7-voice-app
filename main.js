@@ -27,7 +27,6 @@ import {
   LibraryError, UNSENDABLE, keepLibrary, keptLibrary, normaliseName, parseLibrary, randomIndex,
 } from "./library.js";
 import { readStored, writeStored } from "./settings.js";
-import { showSetupNotes } from "./setup-notes.js";
 import { keepShell } from "./shell.js";
 
 const $ = (id) => document.getElementById(id);
@@ -601,7 +600,6 @@ $("file").addEventListener("change", async () => {
 });
 
 async function start() {
-  showSetupNotes($("setup-notes"));
   keepShell();
   let kept = null;
   try {
