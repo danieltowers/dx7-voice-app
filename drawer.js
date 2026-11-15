@@ -1,9 +1,15 @@
-// The library page's Edit drawer: one row per control (parameter-change.js,
-// CONTROLS), each a slider over the voice last sent, and Reset. A new whole
-// value goes to the targets that are on as a parameter change; the status
-// line speaks only when one fails, and the slider then goes back to the value
-// the instruments last received. Reset, on once something has been edited,
-// sends the voice again. Its edit state is edit.js's; it lives in the dock
+// The library page's Edit drawer: a row for each of the voice's controls
+// (parameter-change.js, CONTROLS: algorithm and feedback), then a block for
+// each operator, 1 to 6 (OPERATORS), headed with its number and whether it is
+// a carrier or a modulator in the algorithm as edited, holding its frequency
+// slider with a radio group choosing the slider's setting, and its output
+// level slider; each slider is over the voice last sent as edited. Its
+// name line, Close and Reset stay in view while the controls scroll. A
+// move to a new position goes to the targets that are on as the parameter
+// changes it writes; the status line speaks only when one fails, and the
+// parameters it wrote then go back to what the instruments last received.
+// Reset, on once something has been edited, sends the voice again. Its edit
+// state is edit.js's; the settings are its own. It lives in the dock
 // with the step bar, and the room the list leaves below follows the dock's
 // height. The page provides elements with these ids:
 //
@@ -11,7 +17,8 @@
 //   edit                          the step bar's button that opens and closes it
 //   drawer, drawer-title          the drawer and the voice's name and slot
 //   drawer-note, drawer-controls  why its controls are off, and their box
-//   close-drawer, reset           its two buttons
+//   close-drawer, reset           its two buttons, in its head with the title
+//   status                        the status line, which a wide screen's pane starts below
 //
 // In the browser's history the drawer is an entry of its own over the view
 // on screen, the same view with drawer set, so the back gesture closes it
@@ -19,10 +26,19 @@
 // going to another view leaves it behind, and coming back to its entry opens
 // it again.
 
-import { CONTROLS } from "./parameter-change.js";
+import {
+  CONTROLS, FREQUENCY_SETTINGS, OPERATORS, frequencyControl, levelControl, operatorRole,
+} from "./parameter-change.js";
 import { UNSENDABLE } from "./library.js";
 
 const $ = (id) => document.getElementById(id);
+
+function visuallyHidden(text) {
+  const span = document.createElement("span");
+  span.className = "visually-hidden";
+  span.textContent = text;
+  return span;
+}
 
 // The drawer's history entries, over a history (the browser's) whose entries
 // are { view, depth, ... }, depth counting from the first. Closing it, by
@@ -114,33 +130,107 @@ export function createDrawer({ edit, controls, reset }) {
     if (e.key === "Escape") close();
   });
 
-  const rows = CONTROLS.map((control) => {
+  // Each operator's frequency setting: coarse when the app opens, kept while
+  // it is open (across sends and closing the drawer), never stored.
+  const settings = new Map(OPERATORS.map((n) => [n, "coarse"]));
+
+  // A slider row over the control controlNow() gives (it may change, as an
+  // operator's setting does), named by name: its text, and any part only a
+  // screen reader needs.
+  function sliderRow(controlNow, name, hidden = "") {
     const row = document.createElement("div");
     row.className = "row control";
     const input = document.createElement("input");
     input.type = "range";
     input.step = 1;
-    input.id = `control-${control.id}`;
-    const name = document.createElement("label");
-    name.htmlFor = input.id;
-    name.textContent = control.name;
+    input.id = `control-${controlNow().id}`;
+    const label = document.createElement("label");
+    label.htmlFor = input.id;
+    if (hidden) label.append(visuallyHidden(hidden));
+    label.append(name);
     const output = document.createElement("output");
     output.htmlFor = input.id;
-    row.append(name, input, output);
+    row.append(label, input, output);
     input.addEventListener("input", () => {
-      const value = Number(input.value);
-      const change = edit.set(control, value);
-      if (change) {
-        controls.change(control, value, `${control.name} ${edit.label(control)}`).then((sent) => {
-          edit.settleChange(change, sent);
+      const control = controlNow();
+      const move = edit.set(control, Number(input.value));
+      if (move) {
+        controls.change(move.writes, `${control.name} ${edit.label(control)}`).then((sent) => {
+          edit.settleMove(move, sent);
           show();
         });
       }
       show();
     });
-    return { control, input, output };
-  });
-  $("drawer-controls").replaceChildren(...rows.map((row) => row.input.parentElement));
+    rows.push({ controlNow, input, output });
+    return row;
+  }
+
+  // An operator's frequency settings, one radio group per operator. Choosing
+  // one sends nothing: the slider moves to where the operator's values sit
+  // on it.
+  function settingGroup(n) {
+    const group = document.createElement("fieldset");
+    group.className = "frequency-setting";
+    const legend = document.createElement("legend");
+    legend.className = "visually-hidden";
+    legend.textContent = `Operator ${n} frequency steps`;
+    group.append(legend);
+    for (const setting of FREQUENCY_SETTINGS) {
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = `operator-${n}-setting`;
+      radio.id = `operator-${n}-${setting}`;
+      radio.value = setting;
+      radio.checked = settings.get(n) === setting;
+      radio.addEventListener("change", () => {
+        settings.set(n, setting);
+        show();
+      });
+      const label = document.createElement("label");
+      label.htmlFor = radio.id;
+      label.textContent = setting;
+      group.append(radio, label);
+    }
+    return group;
+  }
+
+  // An operator's block: headed with its number and its role in the
+  // algorithm as edited (drawn by show), holding its frequency slider and
+  // settings, then its output level slider.
+  function operatorBlock(n) {
+    const block = document.createElement("section");
+    block.className = "operator";
+    block.setAttribute("aria-labelledby", `operator-${n}-name`);
+    const head = document.createElement("h3");
+    head.id = `operator-${n}-name`;
+    head.textContent = `Operator ${n}`;
+    heads.push({ n, head });
+    const frequency = sliderRow(() => frequencyControl(n, settings.get(n)), "frequency", `Operator ${n} `);
+    frequency.append(settingGroup(n));
+    const level = levelControl(n);
+    block.append(head, frequency, sliderRow(() => level, "output level", `Operator ${n} `));
+    return block;
+  }
+
+  // The voice's own controls, algorithm and feedback, above the operators.
+  function voiceControls() {
+    const group = document.createElement("div");
+    group.className = "voice-controls";
+    group.append(...CONTROLS.map((control) => sliderRow(() => control, control.name)));
+    return group;
+  }
+
+  function operatorBlocks() {
+    const group = document.createElement("div");
+    group.className = "operators";
+    group.append(...OPERATORS.map(operatorBlock));
+    return group;
+  }
+
+  const rows = [];
+  const heads = [];
+  $("drawer-controls").replaceChildren(voiceControls(), operatorBlocks());
 
   $("reset").addEventListener("click", () => {
     if (!edit.edited) return;
@@ -160,15 +250,22 @@ export function createDrawer({ edit, controls, reset }) {
     $("drawer-note").textContent = note;
     $("drawer-note").hidden = !note;
     $("drawer-controls").hidden = !edit.canOpen;
-    if (edit.canOpen) for (const row of rows) showControl(row);
+    if (edit.canOpen) {
+      for (const row of rows) showControl(row);
+      const voice = edit.voice;
+      for (const { n, head } of heads) head.textContent = `Operator ${n} · ${operatorRole(n, voice)}`;
+    }
     $("reset").disabled = !edit.edited;
   }
 
-  function showControl({ control, input, output }) {
-    const { min, max } = edit.range(control);
+  // Every control is drawn from the voice as edited, so one that reads a
+  // parameter another control wrote is always current.
+  function showControl({ controlNow, input, output }) {
+    const control = controlNow();
+    const { min, max } = edit.span(control);
     input.min = min;
     input.max = max;
-    input.value = edit.value(control);
+    input.value = edit.position(control);
     input.disabled = !edit.ready;
     const label = edit.label(control);
     output.textContent = label;
@@ -179,6 +276,17 @@ export function createDrawer({ edit, controls, reset }) {
   new ResizeObserver(() => {
     document.documentElement.style.setProperty("--dock-height", `${$("dock").offsetHeight}px`);
   }).observe($("dock"));
+
+  // On a wide screen the drawer is a pane from the status line's foot down
+  // (style.css), and that foot moves as the page scrolls until the sticky
+  // line reaches the top, and when the line or the page changes size.
+  function followStatus() {
+    const foot = Math.max(0, $("status").getBoundingClientRect().bottom);
+    document.documentElement.style.setProperty("--status-foot", `${foot}px`);
+  }
+  window.addEventListener("scroll", followStatus, { passive: true });
+  window.addEventListener("resize", followStatus);
+  new ResizeObserver(followStatus).observe($("status"));
 
   return { show, popped: () => place.popped() };
 }

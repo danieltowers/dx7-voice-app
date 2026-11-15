@@ -443,8 +443,8 @@ function markCurrent(scroll = false) {
     $("now").textContent = "Nothing chosen yet";
     $("now").disabled = true;
   }
-  $("prev").disabled = !library || !current.canStep(-1);
-  $("next").disabled = !library || !current.canStep(1);
+  $("prev").disabled = !library || !current.canStep(-1, library);
+  $("next").disabled = !library || !current.canStep(1, library);
 }
 
 // Scroll just enough that a row sits in the part of the screen the sticky
@@ -502,8 +502,15 @@ function sendCurrent({ reset = false } = {}) {
   });
 }
 
+// A step past either end of a bank goes on into the neighbouring bank. When
+// the page was showing the bank stepped out of, it shows the new one in its
+// place (no history entry is added); any other view is left alone.
 function step(delta) {
-  if (current.step(delta)) sendCurrent();
+  const was = current.list;
+  const following = current.isShowing(shown);
+  if (!current.step(delta, library)) return;
+  if (following && current.list !== was) replace(listView(current.list));
+  sendCurrent();
 }
 
 $("prev").addEventListener("click", () => step(-1));

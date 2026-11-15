@@ -13,7 +13,7 @@
 import { TARGETS, loadSettings, normalise, saveSettings } from "./settings.js";
 import { CHANGE_PAUSE_MS, ChangeRefused, planChange } from "./parameter-change.js";
 import {
-  SendError, chooseOutput, describePlan, dropWaitingChange, noOutputMessage, openMidi, outputsOf, sendChange,
+  SendError, chooseOutput, describePlan, dropWaitingChange, noOutputMessage, openMidi, outputsOf, sendMove,
   sendVoice,
 } from "./send.js";
 
@@ -179,35 +179,39 @@ export function createControls() {
     return true;
   }
 
-  // Set one control of the voice in the targets' edit buffers to value, as a
-  // parameter change to the targets that are on (parameter-change.js). The
-  // status line stays quiet when it goes out, so a drag does not fill it;
-  // when it cannot go, the status line says why, naming label (what the
-  // value was to show, "Operator 1 coarse 2.00"). Asks for MIDI first when it
-  // has not been asked for yet. Resolves true when sent, false when not sent,
-  // and null when a newer change to the same parameter replaced it. One that
-  // fails before it is queued still replaces an older change to the
-  // parameter that is waiting, so the slider and the instruments agree.
-  async function change(control, value, label) {
+  // Make one move of a control in the targets' edit buffers: writes, a list
+  // of { parameter, value }, each sent in order as a parameter change to the
+  // targets that are on (parameter-change.js). The status line stays quiet
+  // when the move goes out, so a drag does not fill it; when any of it
+  // cannot go, the status line says why once, naming label (what the move
+  // was to show, "Operator 1 coarse 2.00"). Asks for MIDI first when it has
+  // not been asked for yet. Resolves to one entry per write: true when sent,
+  // false when not sent, and null when a newer change to the same parameter
+  // replaced it. When any write cannot be planned, none is sent, and each
+  // still replaces an older change to its parameter that is waiting, so the
+  // sliders and the instruments agree. Once a write fails, the later ones
+  // are not sent (send.js, sendMove), so a pair never goes half out.
+  async function change(writes, label) {
     if (!access) await openOnce();
     const notSent = (e) => {
       const why = e instanceof SendError || e instanceof ChangeRefused ? e.message : String(e);
       showResult(`${label} not sent. ${why}`, true);
-      return false;
     };
-    let plan;
+    let plans;
     try {
       if (!output) throw new SendError(access ? noOutputMessage(outputsOf(access)) : "MIDI is not open.");
-      plan = planChange(control, value, settings);
+      plans = writes.map((write) => planChange(write, settings));
     } catch (e) {
-      dropWaitingChange(control.parameter);
-      return notSent(e);
+      for (const { parameter } of writes) dropWaitingChange(parameter);
+      notSent(e);
+      return writes.map(() => false);
     }
-    try {
-      return (await sendChange(output, control.parameter, plan, CHANGE_PAUSE_MS)) === null ? null : true;
-    } catch (e) {
-      return notSent(e);
-    }
+    const ended = await Promise.allSettled(
+      sendMove(output, writes.map(({ parameter }, i) => ({ parameter, plan: plans[i] })), CHANGE_PAUSE_MS),
+    );
+    const failed = ended.find((result) => result.status === "rejected");
+    if (failed) notSent(failed.reason);
+    return ended.map((result) => (result.status === "rejected" ? false : result.value === null ? null : true));
   }
 
   renderTargets();

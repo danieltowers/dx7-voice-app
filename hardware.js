@@ -3,7 +3,7 @@
 
 import fixed from "./fixed-messages.js";
 import { createControls } from "./controls.js";
-import { CONTROLS, startingValue } from "./parameter-change.js";
+import { OPERATOR_1_COARSE, labelAt, startingPosition } from "./parameter-change.js";
 import { ADDENDUM_FIRST, HEADER_SIZE, TRAILER_SIZE, addendumMessage, voiceMessage } from "./send.js";
 import { showSetupNotes } from "./setup-notes.js";
 import { keepShell } from "./shell.js";
@@ -61,12 +61,12 @@ $("send-voice-first").addEventListener("click", () =>
 // slider sends only when it lands on a new whole value, so a drag across the
 // range sends each value at most once.
 
-const trial = CONTROLS[0];
+const trial = OPERATOR_1_COARSE;
 const slider = $("trial-slider");
-let trialValue = startingValue(trial, voices.core.voice);
+let trialValue = startingPosition(trial, voices.core.voice);
 
 function trialLabel(value) {
-  return trial.label(value, voices.core.voice);
+  return labelAt(trial, value, voices.core.voice);
 }
 
 function showTrial() {
@@ -75,7 +75,7 @@ function showTrial() {
   slider.setAttribute("aria-valuetext", label);
 }
 
-const range = trial.range(voices.core.voice);
+const range = trial.span(voices.core.voice);
 slider.min = range.min;
 slider.max = range.max;
 slider.value = trialValue;
@@ -87,7 +87,7 @@ slider.addEventListener("input", () => {
   const value = Number(slider.value);
   if (value === trialValue) return;
   trialValue = value;
-  controls.change(trial, value, `${trial.name} ${trialLabel(value)}`);
+  controls.change(trial.writes(value, voices.core.voice), `${trial.name} ${trialLabel(value)}`);
 });
 
 // The rest of the page.

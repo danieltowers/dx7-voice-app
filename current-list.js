@@ -2,7 +2,9 @@
 // of them is current. Opening a bank shows that bank's list; tapping a slot
 // in a shown list makes that list the current one. Any list of slots can be
 // current: a bank's 32, a search's hits or the favourites, each built with
-// makeList from any slots of the library.
+// makeList from any slots of the library. A bank's list leads on: a step past
+// either of its ends goes into the neighbouring bank, in the library page's
+// order; the other lists stop at their ends.
 //
 // A list is { kind, title, key, entries }: kind names where it came from
 // ("bank", "search", "favourites" or "history"), title is what the page heads it with,
@@ -104,6 +106,50 @@ export function historyList(library) {
   return makeList("history", "History", "", entries);
 }
 
+// Stepping across banks. The order of banks is the library page's: origins,
+// then their cartridge folders, then their banks, each as library.origins,
+// folders and banksIn give them. That can differ from the file's order of
+// banks (the file may interleave folders); the page's is the one that counts.
+// Made once per library: the bank indices in that order, and each bank's
+// place in it.
+const orders = new WeakMap();
+
+function bankOrder(library) {
+  if (!orders.has(library)) {
+    const banks = [];
+    for (const origin of library.origins) {
+      for (const folder of library.folders(origin)) banks.push(...library.banksIn(origin, folder));
+    }
+    orders.set(library, { banks, place: new Map(banks.map((bank, i) => [bank, i])) });
+  }
+  return orders.get(library);
+}
+
+// The list of the bank next to bank (delta 1 the one after, -1 the one
+// before) that has slots, or null when bank is at that end of the library.
+function neighbourBank(library, bank, delta) {
+  const { banks, place } = bankOrder(library);
+  for (let i = place.get(bank) + delta; i >= 0 && i < banks.length; i += delta) {
+    if (library.banks[banks[i]].slots.length) return bankList(library, banks[i]);
+  }
+  return null;
+}
+
+// Where a step of delta from entry index of list lands, { list, index }, or
+// null when it lands nowhere. Within the list it stays in it; past either end
+// of a bank's list, with a library, it goes on to the first or last entry of
+// the neighbouring bank. A search, the favourites and the history stop at
+// their ends.
+function stepTarget(library, list, index, delta) {
+  if (!list) return null;
+  const to = index + delta;
+  if (to >= 0 && to < list.entries.length) return { list, index: to };
+  if (list.kind !== "bank" || !library || !list.entries.length) return null;
+  const next = neighbourBank(library, list.entries[0].bank, delta);
+  if (!next) return null;
+  return { list: next, index: delta > 0 ? 0 : next.entries.length - 1 };
+}
+
 // The current list and the index of its current entry (-1: none yet).
 export class Current {
   constructor() {
@@ -124,17 +170,18 @@ export class Current {
     return this.list?.entries[this.index] ?? null;
   }
 
-  // Whether a step of delta (1 next, -1 previous) stays in the list.
-  canStep(delta) {
-    if (!this.list) return false;
-    const to = this.index + delta;
-    return to >= 0 && to < this.list.entries.length;
+  // Whether a step of delta (1 next, -1 previous) lands anywhere: in the
+  // list, or, when the list is a bank's, in the neighbouring bank of library.
+  canStep(delta, library) {
+    return !!stepTarget(library, this.list, this.index, delta);
   }
 
-  // Move by delta and return the new entry, or null at either end.
-  step(delta) {
-    if (!this.canStep(delta)) return null;
-    this.index += delta;
+  // Move by delta and return the new entry, or null at either end. A step past
+  // either end of a bank's list makes the neighbouring bank's the current list.
+  step(delta, library) {
+    const to = stepTarget(library, this.list, this.index, delta);
+    if (!to) return null;
+    this.set(to.list, to.index);
     return this.entry;
   }
 

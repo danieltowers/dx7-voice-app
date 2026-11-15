@@ -15,7 +15,7 @@
 // straight from app/ while developing), it is fetched from the network first,
 // so an edit shows on reload, with the cache as the fallback offline.
 
-const SHELL_VERSION = "7564fd5d7dc7";
+const SHELL_VERSION = "1ab68fede9cd";
 const PREFIX = "dx7-shell-";
 const CACHE = `${PREFIX}${SHELL_VERSION}`;
 const NETWORK_FIRST = SHELL_VERSION === "unpublished";
@@ -23,6 +23,7 @@ const NETWORK_FIRST = SHELL_VERSION === "unpublished";
 // Every file of app/ but this one (tests/test_publish_shell.py checks it).
 const SHELL = [
   "./",
+  "algorithms.js",
   "controls.js",
   "current-list.js",
   "drawer.js",

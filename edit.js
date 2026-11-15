@@ -12,16 +12,24 @@
 //   "sent"        its send succeeded: the controls may send changes
 //   "failed"      its send failed or was replaced: the controls stay off
 //
-// A control is an entry of CONTROLS in parameter-change.js. The values set
-// are kept by control id while the voice stays current, so the drawer shows
-// them again when it reopens. The page tells it how each change ended
-// (settleChange), so that a control whose change could not be sent goes back
-// to the value the instruments last received. A Reset is a send like any
-// other, offered while edited is true.
+// The edit holds the voice as edited: the voice's 155 data bytes with the
+// parameter values set so far laid over them, kept by parameter number while
+// the voice stays current, so the drawer shows them again when it reopens.
+// A control (parameter-change.js, CONTROLS) is a view of it, so it shows
+// parameters other controls wrote.
+//
+// A move (set) is one change to the edit, however many parameters it
+// writes: { writes }, a list of { parameter, value } to send in order. The
+// page tells it what became of each (settleMove). When any of a move's
+// messages could not be sent, every parameter it wrote goes back to the
+// value the instruments last received. A Reset is a send like any other,
+// offered while edited is true.
 
-import { isWholeIn, startingValue } from "./parameter-change.js";
+import { isWholeIn, labelAt, withWrites } from "./parameter-change.js";
 
 export class Edit {
+  #asEdited = null; // the voice as edited, built on first read after a change
+
   constructor() {
     this.clear();
   }
@@ -29,13 +37,14 @@ export class Edit {
   // No current voice: nothing to edit, as before any send.
   clear() {
     this.name = null; // the voice's name and slot, as the page shows it
-    this.data = null; // its 155 single-voice data bytes
+    this.data = null; // its 155 single-voice data bytes, as published
     this.status = "none";
     this.send = null;
-    this.values = new Map(); // control id -> the value last set
-    this.received = new Map(); // control id -> the value of the last change that went out
-    this.newest = new Map(); // control id -> the last change set returned
+    this.values = new Map(); // parameter -> the value last set
+    this.received = new Map(); // parameter -> the value of the last change to it that went out
+    this.newest = new Map(); // parameter -> the last move that wrote it
     this.editLeft = false; // the instruments may still hold an edit made before this send
+    this.#asEdited = null;
   }
 
   // A send of the voice named name (data its 155 single-voice data bytes, or
@@ -52,6 +61,7 @@ export class Edit {
       return null;
     }
     this.data = data;
+    this.#asEdited = null;
     this.status = "sending";
     this.send = {};
     return this.send;
@@ -76,8 +86,8 @@ export class Edit {
   }
 
   // Whether the instruments may hold anything but the voice as published: a
-  // control has been set since the voice was sent, or no send has succeeded
-  // since an edit was left on them.
+  // parameter has been set since the voice was sent, or no send has
+  // succeeded since an edit was left on them.
   get #mayDiffer() {
     return this.values.size > 0 || (this.status !== "sent" && this.editLeft);
   }
@@ -88,50 +98,75 @@ export class Edit {
     return (this.status === "sent" || this.status === "failed") && this.#mayDiffer;
   }
 
-  // A control's value: the one last set, otherwise the voice's stored value.
-  value(control) {
-    return this.values.get(control.id) ?? startingValue(control, this.data);
+  // The voice as edited: 155 data bytes (null with no voice), a copy of the
+  // voice built once per change to the edit and the same array until the
+  // next; read it, never change it.
+  get voice() {
+    if (!this.data) return null;
+    this.#asEdited ??= withWrites(this.data, [...this.values].map(([parameter, value]) => ({ parameter, value })));
+    return this.#asEdited;
   }
 
-  // The control's span for this voice: { min, max }.
-  range(control) {
-    return control.range(this.data);
+  // A parameter's value as set, or (value undefined) back to the voice's own.
+  #setValue(parameter, value) {
+    if (value === undefined) this.values.delete(parameter);
+    else this.values.set(parameter, value);
+    this.#asEdited = null;
   }
 
-  // A value of the control (by default its value now) as the panel shows it.
-  label(control, value = this.value(control)) {
-    return control.label(value, this.data);
+  // Where the voice as edited sits on a control.
+  position(control) {
+    return control.position(this.voice);
   }
 
-  // Set a control to value. When it is a new value to send (the voice's send
-  // has succeeded, the value is in the control's span, and it is not the
-  // value the control already has), returns the change to settle once it has
-  // been sent or not; otherwise null.
-  set(control, value) {
+  // The control's span for the voice as edited: { min, max }.
+  span(control) {
+    return control.span(this.voice);
+  }
+
+  // The control's label for the voice as edited, or for it moved to
+  // position: as the panel shows it.
+  label(control, position) {
+    return position === undefined ? control.label(this.voice) : labelAt(control, position, this.voice);
+  }
+
+  // Move a control to position. When that is a move to send (the voice's
+  // send has succeeded, the position is in the control's span and is not
+  // where the control sits, and it writes a value that differs), returns the
+  // move to settle, { send, writes }, writes being only the parameters that
+  // differ; otherwise null.
+  set(control, position) {
     if (!this.ready) return null;
-    const { min, max } = this.range(control);
-    if (!isWholeIn(value, min, max)) return null;
-    if (value === this.value(control)) return null;
-    this.values.set(control.id, value);
-    const change = { send: this.send, control, value };
-    this.newest.set(control.id, change);
-    return change;
+    const voice = this.voice;
+    const { min, max } = control.span(voice);
+    if (!isWholeIn(position, min, max) || position === control.position(voice)) return null;
+    const writes = control.writes(position, voice).filter(({ parameter, value }) => voice[parameter] !== value);
+    if (writes.length === 0) return null;
+    const move = { send: this.send, writes };
+    for (const { parameter, value } of writes) {
+      this.#setValue(parameter, value);
+      this.newest.set(parameter, move);
+    }
+    return move;
   }
 
-  // The change set returned ended: sent true, not sent false, or null when a
-  // newer change to the same control replaced it. When the newest change to
-  // a control is not sent, the control goes back to the value the
-  // instruments last received (and counts as unedited if they never received
-  // a change to it); an older one failing leaves the newer to decide. A
-  // change to a voice since replaced by another send changes nothing.
-  settleChange(change, sent) {
-    if (!change || change.send !== this.send) return;
-    const { control, value } = change;
-    if (sent === true) {
-      this.received.set(control.id, value);
-    } else if (sent === false && this.newest.get(control.id) === change) {
-      if (this.received.has(control.id)) this.values.set(control.id, this.received.get(control.id));
-      else this.values.delete(control.id);
+  // The move set returned ended: sent has one entry per write, in order,
+  // true when it went out, false when it could not be sent, null when a
+  // newer change to the same parameter replaced it. What went out is what
+  // the instruments last received. When any write could not be sent, each
+  // parameter the move wrote goes back to the value the instruments last
+  // received (unedited if they never received a change to it), unless a
+  // newer move has written it since, which then decides. A move to a voice
+  // since replaced by another send changes nothing.
+  settleMove(move, sent) {
+    if (!move || move.send !== this.send) return;
+    move.writes.forEach(({ parameter, value }, i) => {
+      if (sent[i] === true) this.received.set(parameter, value);
+    });
+    if (!sent.includes(false)) return;
+    for (const { parameter } of move.writes) {
+      if (this.newest.get(parameter) !== move) continue;
+      this.#setValue(parameter, this.received.get(parameter));
     }
   }
 }

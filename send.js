@@ -101,7 +101,7 @@ function listed(labels) {
 // next send starts, so quick taps or next presses never reach an instrument
 // back to back. A send still waiting when a newer one arrives is dropped,
 // so quick next presses send only the voice they stop on. Parameter changes
-// (sendChange) share the queue but neither drop a voice send nor are dropped
+// (sendChange, sendMove) share the queue but neither drop a voice send nor are dropped
 // by one. Resolves to the plan when the last message has been handed on, or
 // to null when dropped; rejects with a SendError in plain words.
 let queue = Promise.resolve();
@@ -121,9 +121,30 @@ export function sendPlan(output, plan, pauseMs) {
 // CHANGE_PAUSE_MS) separates the plan's own messages (one per address) and
 // follows the last, after each message's time on the cable.
 export function sendChange(output, parameter, plan, pauseMs) {
-  const ticket = {};
-  newestChange.set(parameter, ticket);
-  return enqueue(() => newestChange.get(parameter) === ticket, output, plan, pauseMs);
+  return sendMove(output, [{ parameter, plan }], pauseMs)[0];
+}
+
+// Put one move's changes, a list of { parameter, plan }, on the queue in
+// order, as sendChange does each. Once one of them fails, the later ones are
+// not sent and reject with the same error, so a pair never goes half out: a
+// change already handed on stays, the rest never leave. One replaced by a
+// newer change to its parameter (null) does not stop the rest. Returns one
+// promise per change.
+export function sendMove(output, changes, pauseMs) {
+  let failure = null;
+  return changes.map(({ parameter, plan }) => {
+    const ticket = {};
+    newestChange.set(parameter, ticket);
+    return enqueue(() => newestChange.get(parameter) === ticket, output, plan, pauseMs, async () => {
+      if (failure) throw failure;
+      try {
+        return await sendNow(output, plan, pauseMs);
+      } catch (e) {
+        failure = e;
+        throw e;
+      }
+    });
+  });
 }
 
 // A change to parameter failed before it reached the queue (no output, say).
@@ -134,8 +155,10 @@ export function dropWaitingChange(parameter) {
   newestChange.set(parameter, {});
 }
 
-function enqueue(isNewest, output, plan, pauseMs) {
-  const run = queue.then(() => (isNewest() ? sendNow(output, plan, pauseMs) : null));
+// Queue send (by default, sending plan on output) behind everything queued;
+// it runs only if isNewest still says so, and resolves to null otherwise.
+function enqueue(isNewest, output, plan, pauseMs, send = () => sendNow(output, plan, pauseMs)) {
+  const run = queue.then(() => (isNewest() ? send() : null));
   const last = plan.at(-1);
   const gap = last ? Math.ceil(last.bytes.length * MS_PER_BYTE) + pauseMs : 0;
   queue = run.then((sent) => (sent ? sleep(gap) : undefined), () => {});
