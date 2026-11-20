@@ -74,7 +74,10 @@
     <button id="clear-history" type="button" class="secondary" disabled>Clear the history</button>
   </section>
 
-  <input id="file" type="file" accept=".json,application/json" class="visually-hidden" tabindex="-1">
+  <!-- No accept filter: Android's picker greys out a .json file whose stored type
+       is not application/json (often so after Drive, a message or a USB copy).
+       The library's own checks refuse a wrong file. -->
+  <input id="file" type="file" class="visually-hidden" tabindex="-1">
 </main>
 
 <div id="dock" class="dock">

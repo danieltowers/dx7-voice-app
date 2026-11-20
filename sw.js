@@ -15,7 +15,7 @@
 // straight from app/ while developing), it is fetched from the network first,
 // so an edit shows on reload, with the cache as the fallback offline.
 
-const SHELL_VERSION = "399d2fa8bd56";
+const SHELL_VERSION = "f714d5c96d07";
 const PREFIX = "dx7-shell-";
 const CACHE = `${PREFIX}${SHELL_VERSION}`;
 const NETWORK_FIRST = SHELL_VERSION === "unpublished";
