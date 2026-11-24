@@ -49,9 +49,9 @@
       </div>
     </div>
     <div id="empty" class="empty" hidden>
-      <p>No library loaded. Load the starter voices to try the app, or open a library file of your own. <a href="help.html">Help</a> says which browsers work.</p>
+      <p>No voices yet. Load the starter voices to try the app, or open .syx bank files of your own. <a href="help.html">Help</a> says which browsers work.</p>
       <button type="button" class="send load-starter">Load the starter voices</button>
-      <label class="secondary file-button" for="file">Open a library file</label>
+      <label class="secondary file-button" for="file">Open .syx or library files</label>
     </div>
     <p id="no-hits" class="empty" hidden></p>
     <ol id="items" class="items"></ol>
@@ -68,8 +68,12 @@
 
     <h2 id="library-heading">Library</h2>
     <p id="library-line" class="hint">No library loaded.</p>
-    <label class="secondary file-button" for="file">Open a library file</label>
+    <label class="secondary file-button" for="file">Open .syx or library files</label>
     <button type="button" class="secondary load-starter">Load the starter voices</button>
+
+    <h2 id="imports-heading">My banks</h2>
+    <p id="imports-line" class="hint">No .syx files added. Open one to add its banks here.</p>
+    <ul id="imports" class="imports" aria-labelledby="imports-heading"></ul>
 
     <h2 id="history-heading">History</h2>
     <p id="history-line" class="hint">The history is empty.</p>
@@ -79,7 +83,7 @@
   <!-- No accept filter: Android's picker greys out a .json file whose stored type
        is not application/json (often so after Drive, a message or a USB copy).
        The library's own checks refuse a wrong file. -->
-  <input id="file" type="file" class="visually-hidden" tabindex="-1">
+  <input id="file" type="file" class="visually-hidden" tabindex="-1" multiple>
 </main>
 
 <div id="dock" class="dock">

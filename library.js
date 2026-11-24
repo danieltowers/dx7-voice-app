@@ -1,7 +1,8 @@
 // The voice library: the file exported by `tool/dx7 export-library`, checked,
 // kept in IndexedDB, and read as origins, cartridges (folders), banks and
 // slots. The file's shape is documented in src/dx7/library.py and the README
-// ("The voice library file"); this module reads it and adds nothing to it.
+// ("The voice library file"); this module reads it and adds nothing to it but
+// the banks imported from .syx files (combine), kept beside it.
 
 import { SendError, voiceMessage } from "./send.js";
 
@@ -13,6 +14,11 @@ export class LibraryError extends Error {}
 // words when the file is not a library, is a version this app does not know,
 // or its fixture does not match this app's own assembly of the first voice.
 export function parseLibrary(text) {
+  return new Library(checkLibrary(text));
+}
+
+// The file's document, checked as parseLibrary checks it.
+export function checkLibrary(text) {
   let doc;
   try {
     doc = JSON.parse(text);
@@ -31,7 +37,46 @@ export function parseLibrary(text) {
     throw new LibraryError("Refused: the library file has no voices or no banks.");
   }
   checkFixture(doc);
-  return new Library(doc);
+  return doc;
+}
+
+// Imported banks, from .syx files the user opened (syx.js), are listed after
+// the library file's under one origin, a folder for each file. An import is
+// { fileName, banks: [{ name, slots: [{ name, voice: base64 or null }] }] }.
+export const IMPORTED = "My banks";
+
+// The library document of a library file's (or none, null) with the imports
+// after its banks. Each imported voice's line says the file it came from.
+export function combine(doc, imports) {
+  const voices = [...(doc?.voices ?? [])];
+  const banks = [...(doc?.banks ?? [])];
+  for (const { fileName, banks: imported } of imports) {
+    imported.forEach((bank, i) => banks.push({
+      origin: IMPORTED, folder: fileName, file: fileName, bank: i + 1, name: bank.name,
+      slots: bank.slots.map(({ name, voice }) => {
+        if (!voice) return { voice: null, name };
+        voices.push({ name, attribution: "imported", designer: null, publisher: fileName, voice });
+        return { voice: voices.length - 1 };
+      }),
+    }));
+  }
+  return { exported: doc?.exported ?? null, voices, banks };
+}
+
+// An import of a .syx file's banks as readSyx gives them.
+export function importOf(fileName, banks) {
+  return {
+    fileName,
+    importedAt: new Date().toISOString(),
+    banks: banks.map((bank) => ({
+      name: bank.name,
+      slots: bank.voices.map(({ name, data }) => ({ name, voice: data ? toBase64(data) : null })),
+    })),
+  };
+}
+
+export function toBase64(bytes) {
+  return btoa(String.fromCharCode(...bytes));
 }
 
 // The file carries one complete message, made by the core: the first voice at
@@ -225,7 +270,9 @@ function bankKey(bank) {
 
 // How the attribution line says each level the file carries (dx7.manifest's
 // levels); a level this app does not know is shown as the file says it.
-const LEVEL_WORDS = { confirmed: "confirmed", "archive-attributed": "archive-attributed", unknown: "unknown designer" };
+const LEVEL_WORDS = {
+  confirmed: "confirmed", "archive-attributed": "archive-attributed", unknown: "unknown designer", imported: "imported",
+};
 
 // "<designer> · archive-attributed", or for a built voice "dx7 build agent ·
 // <build folder> · confirmed": what the file says, nothing added.
@@ -236,10 +283,13 @@ function attribution(voice) {
 
 // Keeping the library: one record in IndexedDB, the file's text as loaded.
 // Loading a file replaces it. The text is parsed and checked again on open.
+// The imports are a second record, the list of them; loading a library file
+// leaves them alone.
 
 const DB = "dx7-app";
 const STORE = "library";
 const KEY = "current";
+const IMPORTS_KEY = "imports";
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -273,11 +323,21 @@ export function keepLibrary(text, fileName) {
   return transact("readwrite", (store) => store.put({ text, fileName, loadedAt: new Date().toISOString() }, KEY));
 }
 
-// The kept library, checked again: { library, fileName, loadedAt }, or null
+// The kept library file, checked again: { doc, fileName, loadedAt }, or null
 // when none is kept. Throws a LibraryError when the kept one is refused now
 // (a newer app that no longer reads its version, say).
 export async function keptLibrary() {
   const record = await transact("readonly", (store) => store.get(KEY));
   if (!record) return null;
-  return { library: parseLibrary(record.text), fileName: record.fileName, loadedAt: record.loadedAt };
+  return { doc: checkLibrary(record.text), fileName: record.fileName, loadedAt: record.loadedAt };
+}
+
+// Keep the list of imports, replacing the one kept.
+export function keepImports(imports) {
+  return transact("readwrite", (store) => store.put(imports, IMPORTS_KEY));
+}
+
+// The kept imports, oldest first ([] when none).
+export async function keptImports() {
+  return (await transact("readonly", (store) => store.get(IMPORTS_KEY))) ?? [];
 }

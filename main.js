@@ -24,8 +24,10 @@ import {
   historyList, noteSent, positionOf, restorePosition, whenAt,
 } from "./current-list.js";
 import {
-  LibraryError, UNSENDABLE, keepLibrary, keptLibrary, normaliseName, parseLibrary, randomIndex,
+  IMPORTED, Library, LibraryError, UNSENDABLE, checkLibrary, combine, importOf, keepImports, keepLibrary,
+  keptImports, keptLibrary, normaliseName, randomIndex,
 } from "./library.js";
+import { SyxError, looksLikeSyx, readSyx } from "./syx.js";
 import { readStored, writeStored } from "./settings.js";
 import { keepShell } from "./shell.js";
 
@@ -537,20 +539,48 @@ window.addEventListener("popstate", () => {
   else render(v);
 });
 
-// Loading the library.
+// Loading the library: a library file (or none) and the banks imported from
+// .syx files, listed together, the imports after the file's banks.
 
-function describe(fileName, exported) {
-  const voices = library.voices.length.toLocaleString("en-GB");
-  const banks = library.banks.length.toLocaleString("en-GB");
-  return `${fileName ?? "The library"}${exported ? `, exported ${exported}` : ""}: ${voices} voices in ${banks} banks.`;
+let libraryFile = null; // { doc, fileName } of the library file kept, or null
+let imports = []; // the .syx imports kept, oldest first (library.js, combine)
+
+function describe({ doc, fileName }) {
+  return `${fileName}${doc.exported ? `, exported ${doc.exported}` : ""}: ` +
+    `${plural(doc.voices.length, "voice")} in ${plural(doc.banks.length, "bank")}.`;
 }
 
-// Use a checked library file (or none, null): restore the kept position in
-// it and show its list, or the origins when there is none.
-function use(next, fileName) {
-  library = next;
+function voiceCount(entry) {
+  return entry.banks.reduce((n, bank) => n + bank.slots.length, 0);
+}
+
+// Setup's lines for the library file and the imports, each import with its
+// Remove button.
+function showLibraryFiles() {
+  $("library-line").textContent = libraryFile ? describe(libraryFile) : "No library file loaded.";
+  $("imports-line").hidden = imports.length > 0;
+  $("imports").replaceChildren(...imports.map((entry) => {
+    const row = document.createElement("li");
+    row.className = "row";
+    const label = document.createElement("span");
+    label.textContent = `${entry.fileName}: ${plural(voiceCount(entry), "voice")}`;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "secondary";
+    remove.textContent = "Remove";
+    remove.setAttribute("aria-label", `Remove ${entry.fileName}`);
+    remove.addEventListener("click", () => removeImport(entry.fileName));
+    row.append(label, remove);
+    return row;
+  }));
+}
+
+// Show the library file and the imports as one library: restore the kept
+// position in it and show its list, or the origins when there is none.
+function use() {
+  library = libraryFile || imports.length ? new Library(combine(libraryFile?.doc, imports)) : null;
   edit.clear(); // nothing of the new library has been sent yet
-  if (next) $("library-line").textContent = describe(fileName, next.exported);
+  showLibraryFiles();
   if (!library) {
     current.clear();
     resetHistory([ORIGINS]);
@@ -574,14 +604,14 @@ function use(next, fileName) {
   }
 }
 
-// Check, keep and use a library file's text, read by read(); fileName names it
-// in the status line.
+// Check, keep and use a library file's text, read by read(), in place of the
+// library file kept; the imports stay. fileName names it in the status line.
 async function load(fileName, read) {
   controls.showResult(`Reading ${fileName}…`);
-  let next, text;
+  let doc, text;
   try {
     text = await read();
-    next = parseLibrary(text);
+    doc = checkLibrary(text);
   } catch (e) {
     controls.showResult(`${fileName}: ${e instanceof LibraryError ? e.message : `it could not be read (${e?.message ?? e}).`}` +
       (library ? " The library already kept is still in use." : ""), true);
@@ -594,14 +624,65 @@ async function load(fileName, read) {
     kept = false;
     controls.showResult(`${fileName} is loaded but cannot be kept: ${e.message} Open it again next time.`, true);
   }
-  use(next, fileName);
-  if (kept) controls.showResult(`Loaded ${describe(fileName, next.exported)}`);
+  libraryFile = { doc, fileName };
+  use();
+  if (kept) controls.showResult(`Loaded ${describe(libraryFile)}`);
 }
 
-$("file").addEventListener("change", () => {
-  const file = $("file").files[0];
+// Read a .syx file's banks and add them under My banks, in place of an
+// earlier import of a file of the same name; then show the first of them.
+async function importSyx(fileName, bytes) {
+  let entry;
+  try {
+    entry = importOf(fileName, readSyx(bytes, fileName));
+  } catch (e) {
+    controls.showResult(`${fileName}: ${e instanceof SyxError ? e.message : `it could not be read (${e?.message ?? e}).`}`, true);
+    return;
+  }
+  const next = [...imports.filter((i) => i.fileName !== fileName), entry];
+  let kept = true;
+  try {
+    await keepImports(next);
+  } catch (e) {
+    kept = false;
+    controls.showResult(`${fileName} is added but cannot be kept: ${e.message} Open it again next time.`, true);
+  }
+  imports = next;
+  use();
+  const bank = library.bankAt(`${IMPORTED}\n${fileName}\n1`);
+  if (bank >= 0) resetHistory(pathTo(bank));
+  if (kept) controls.showResult(`Added ${fileName} to ${IMPORTED}: ${plural(voiceCount(entry), "voice")}.`);
+}
+
+async function removeImport(fileName) {
+  const next = imports.filter((i) => i.fileName !== fileName);
+  try {
+    await keepImports(next);
+  } catch (e) {
+    controls.showResult(`${fileName} cannot be removed: ${e.message}`, true);
+    return;
+  }
+  imports = next;
+  use();
+  replace(SETUP);
+  controls.showResult(`Removed ${fileName}.`);
+}
+
+// One or more files: each .syx file is imported, a library file loaded.
+$("file").addEventListener("change", async () => {
+  const files = [...$("file").files];
   $("file").value = "";
-  if (file) load(file.name, () => file.text());
+  for (const file of files) {
+    let bytes;
+    try {
+      bytes = new Uint8Array(await file.arrayBuffer());
+    } catch (e) {
+      controls.showResult(`${file.name}: it could not be read (${e?.message ?? e}).`, true);
+      continue;
+    }
+    if (looksLikeSyx(bytes, file.name)) await importSyx(file.name, bytes);
+    else await load(file.name, async () => new TextDecoder().decode(bytes));
+  }
 });
 
 // The starter library: the build agent's voices, published beside the shell
@@ -621,13 +702,18 @@ for (const button of document.querySelectorAll(".load-starter")) {
 
 async function start() {
   keepShell();
-  let kept = null;
   try {
-    kept = await keptLibrary();
+    const kept = await keptLibrary();
+    if (kept) libraryFile = { doc: kept.doc, fileName: kept.fileName };
   } catch (e) {
     controls.showResult(e instanceof LibraryError ? e.message : `The kept library could not be read: ${e?.message ?? e}`, true);
   }
-  use(kept?.library ?? null, kept?.fileName);
+  try {
+    imports = await keptImports();
+  } catch (e) {
+    controls.showResult(`The imported banks could not be read: ${e?.message ?? e}`, true);
+  }
+  use();
 }
 
 start();

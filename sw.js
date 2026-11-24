@@ -15,7 +15,7 @@
 // straight from app/ while developing), it is fetched from the network first,
 // so an edit shows on reload, with the cache as the fallback offline.
 
-const SHELL_VERSION = "9fdd403e60fb";
+const SHELL_VERSION = "db2296b3c8bf";
 const PREFIX = "dx7-shell-";
 const CACHE = `${PREFIX}${SHELL_VERSION}`;
 const NETWORK_FIRST = SHELL_VERSION === "unpublished";
@@ -46,6 +46,7 @@ const SHELL = [
   "setup-notes.js",
   "shell.js",
   "style.css",
+  "syx.js",
 ];
 
 self.addEventListener("install", (event) => {

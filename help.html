@@ -52,7 +52,10 @@
 
   <section aria-labelledby="library-heading">
     <h2 id="library-heading">Library</h2>
-    <p>The starter voices are a small library of voices made by the DX7 build agent, fetched from this site when you load them. A library file of your own, <code>voice-library.json</code>, is written by <code>tool/dx7 export-library</code> in the <code>dx7-sound-builder-agent</code> project and copied to this device. Either way, the library loaded last replaces the one kept, and it stays on this device; nothing is sent over the web.</p>
+    <p>The starter voices are a small library of voices made by the DX7 build agent, fetched from this site when you load them.</p>
+    <p>To add your own voices, open <code>.syx</code> files: 32-voice bank dumps, as a DX7 sends them, cartridge archives share them and Dexed saves them with Save cart, or single-voice dumps. Each file's banks go under My banks, beside the library. Opening a file of the same name again replaces its banks; Setup lists the files added and removes one. DX7II extras in a file (its additional voice data) are not read: the voice is sent without them.</p>
+    <p>A library file, <code>voice-library.json</code>, is written by <code>tool/dx7 export-library</code> in the <code>dx7-sound-builder-agent</code> project. Loading one, or the starter voices, replaces the library kept; My banks stay.</p>
+    <p>Everything stays on this device; nothing is sent over the web.</p>
   </section>
 
   <section aria-labelledby="history-heading">
