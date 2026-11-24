@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#8a3b12">
+  <title>DX7 voices</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="main.js"></script>
+</head>
+<body class="library-page">
+<main>
+  <div class="page-head">
+    <h1>DX7 voices</h1>
+    <div class="head-buttons">
+      <a id="to-help" class="secondary link-button" href="help.html">Help</a>
+      <button id="to-setup" type="button" class="secondary">Setup</button>
+    </div>
+  </div>
+
+  <p id="status" class="status" role="status" aria-live="polite">
+    <span id="port-line">Port: MIDI is asked for on the first send.</span><br>
+    <span id="result-line">Nothing sent yet.</span>
+  </p>
+  <p id="retry-row" hidden><button id="retry" type="button" class="secondary">Ask for MIDI again</button></p>
+  <div id="output-row" class="row" hidden>
+    <label for="output">Output</label>
+    <select id="output"></select>
+  </div>
+
+  <div id="filters" class="filters" role="search">
+    <input id="search" type="search" placeholder="Search voice names" aria-label="Search voice names"
+      autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="search">
+    <div class="filter-buttons">
+      <button id="favourites" type="button" class="secondary toggle" aria-pressed="false">Favourites</button>
+      <button id="history" type="button" class="secondary toggle" aria-pressed="false" disabled>History</button>
+      <button id="shuffle" type="button" class="secondary" disabled>Shuffle</button>
+    </div>
+  </div>
+
+  <section id="browse" aria-labelledby="view-title">
+    <div class="view-head">
+      <button id="up" type="button" class="secondary up" hidden>‹ Back</button>
+      <div class="view-names">
+        <p id="view-context" class="view-context"></p>
+        <h2 id="view-title">Opening the library…</h2>
+      </div>
+    </div>
+    <div id="empty" class="empty" hidden>
+      <p>No library loaded. Load the starter voices to try the app, or open a library file of your own. <a href="help.html">Help</a> says which browsers work.</p>
+      <button type="button" class="send load-starter">Load the starter voices</button>
+      <label class="secondary file-button" for="file">Open a library file</label>
+    </div>
+    <p id="no-hits" class="empty" hidden></p>
+    <ol id="items" class="items"></ol>
+    <p id="more-row" hidden><button id="more" type="button" class="secondary more"></button></p>
+  </section>
+
+  <section id="setup" aria-labelledby="setup-heading" hidden>
+    <h2 id="setup-heading">Targets and pause</h2>
+    <div id="targets"></div>
+    <div class="row">
+      <label for="pause">Pause between messages (ms)</label>
+      <input id="pause" type="number" inputmode="numeric" min="0" max="1000" step="10">
+    </div>
+
+    <h2 id="library-heading">Library</h2>
+    <p id="library-line" class="hint">No library loaded.</p>
+    <label class="secondary file-button" for="file">Open a library file</label>
+    <button type="button" class="secondary load-starter">Load the starter voices</button>
+
+    <h2 id="history-heading">History</h2>
+    <p id="history-line" class="hint">The history is empty.</p>
+    <button id="clear-history" type="button" class="secondary" disabled>Clear the history</button>
+  </section>
+
+  <!-- No accept filter: Android's picker greys out a .json file whose stored type
+       is not application/json (often so after Drive, a message or a USB copy).
+       The library's own checks refuse a wrong file. -->
+  <input id="file" type="file" class="visually-hidden" tabindex="-1">
+</main>
+
+<div id="dock" class="dock">
+<section id="drawer" class="drawer" aria-labelledby="drawer-title" hidden>
+  <div class="drawer-head">
+    <div class="drawer-names">
+      <h2 id="drawer-title"></h2>
+    </div>
+    <div class="drawer-buttons">
+      <button id="reset" type="button" class="secondary" disabled>Reset</button>
+      <button id="close-drawer" type="button" class="secondary">Close</button>
+    </div>
+  </div>
+  <div class="drawer-body">
+    <p id="drawer-note" class="drawer-note" hidden></p>
+    <div id="drawer-controls"></div>
+  </div>
+</section>
+
+<nav id="bar" class="bar" aria-label="Step through the current list">
+  <div class="now-row">
+    <button id="now" type="button" class="now" disabled>Nothing chosen yet</button>
+    <button id="edit" type="button" class="secondary edit" aria-controls="drawer" aria-expanded="false" disabled>Edit</button>
+  </div>
+  <div class="steps">
+    <button id="prev" type="button" class="step" disabled>‹ Previous</button>
+    <button id="next" type="button" class="step" disabled>Next ›</button>
+  </div>
+</nav>
+</div>
+</body>
+</html>

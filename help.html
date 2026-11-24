@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#8a3b12">
+  <title>DX7 voices help</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="help.js"></script>
+</head>
+<body>
+<main>
+  <div class="page-head">
+    <h1>Help</h1>
+    <div class="head-buttons">
+      <a class="secondary link-button" href="./">‹ Voices</a>
+    </div>
+  </div>
+
+  <section aria-labelledby="browsers-heading">
+    <h2 id="browsers-heading">Browsers</h2>
+    <p>The app sends voices as MIDI System Exclusive messages, through the browser's Web MIDI. Use Chrome or Edge, on Android or on a computer. The browser asks once for permission to control MIDI devices; the app cannot send until it is allowed.</p>
+    <p>Safari has no Web MIDI, and neither does any browser on an iPhone or iPad: the app opens and browses there but cannot send.</p>
+    <p>A phone needs a USB-MIDI interface on its USB port (with an OTG adapter if the interface's plug does not fit). Install the app from the browser's menu (Add to home screen, or Install app) and it opens without a network.</p>
+  </section>
+
+  <section aria-labelledby="sending-heading">
+    <h2 id="sending-heading">Sending a voice</h2>
+    <p>Tap a voice to send it to the edit buffer of every target that is on. Previous and Next step through the list on screen. The status line at the top shows the port in use and the result of the last send.</p>
+    <p>Memory protect stays on everywhere. Edit-buffer messages bypass it, so nothing stored on an instrument changes.</p>
+  </section>
+
+  <section aria-labelledby="edit-heading">
+    <h2 id="edit-heading">Editing a voice</h2>
+    <p>Edit opens the controls for the voice last sent. Each move of a slider goes out at once, as a parameter change, to the targets that are on.</p>
+    <p>An edit lives only in the instruments' edit buffers. Sending any voice replaces it, Reset sends this one again as published, and nothing is saved.</p>
+    <dl class="setup">
+      <dt>Frequency</dt>
+      <dd><strong>coarse</strong> moves the ratio in whole steps and keeps fine; <strong>fine</strong> moves fine across 0 to 99 and keeps coarse; <strong>continuous</strong> moves both along one rising run. The value shown is the operator's true ratio, or its frequency in Hz when the operator is in fixed-frequency mode. Choosing a setting sends nothing.</dd>
+      <dt>Output level</dt>
+      <dd>0 to 99. On a carrier it sets that part's volume; on a modulator, how much it colours the operator it feeds.</dd>
+    </dl>
+  </section>
+
+  <section aria-labelledby="setup-heading">
+    <h2 id="setup-heading">Setup, per instrument</h2>
+    <dl id="setup-notes" class="setup"></dl>
+    <p>To check the connection, open the <a href="hardware.html">hardware check</a>. It sends one fixed voice to the instruments.</p>
+  </section>
+
+  <section aria-labelledby="library-heading">
+    <h2 id="library-heading">Library</h2>
+    <p>The starter voices are a small library of voices made by the DX7 build agent, fetched from this site when you load them. A library file of your own, <code>voice-library.json</code>, is written by <code>tool/dx7 export-library</code> in the <code>dx7-sound-builder-agent</code> project and copied to this device. Either way, the library loaded last replaces the one kept, and it stays on this device; nothing is sent over the web.</p>
+  </section>
+
+  <section aria-labelledby="history-heading">
+    <h2 id="history-heading">History</h2>
+    <p>Every voice sent, newest first, up to 200. It stays on the device being used to edit the voices.</p>
+  </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,238 @@
+// Sending one voice to the instruments over Web MIDI: the messages, their
+// order, the pause between them, and the MIDI port. Shared by the hardware
+// page and the library page.
+//
+// A voice is { voice, addendum }: the 155 single-voice data bytes (Yamaha
+// format 0) and, when the voice has one, the 49 single-addendum data bytes
+// (format 5), each as a Uint8Array without header or checksum. The data come
+// from the dx7 core; this module adds only the header, the address nibble,
+// the checksum and the end byte (research/sysex-reception.md).
+
+import { byAddress, targetsOn } from "./settings.js";
+
+// The order on the DX7s and the DX7IID when a voice has an addendum: true
+// sends the addendum message(s) first, then the voice message(s). The manuals
+// do not say (research/sysex-reception.md, finding 5); addendum first is what
+// the repo has said, after the TX81Z's rule. The hardware milestone (the
+// hardware page's two addendum buttons) settles it; change it only here.
+export const ADDENDUM_FIRST = true;
+
+const VOICE_HEADER = [0xf0, 0x43, 0x00, 0x00, 0x01, 0x1b];
+const ADDENDUM_HEADER = [0xf0, 0x43, 0x00, 0x05, 0x00, 0x31];
+// Both messages: this many header bytes before the data, then the checksum
+// and the end byte after it.
+export const HEADER_SIZE = VOICE_HEADER.length;
+export const TRAILER_SIZE = 2;
+export const VOICE_DATA_SIZE = 155;
+export const ADDENDUM_DATA_SIZE = 49;
+
+// MIDI runs at 31,250 baud, ten bits a byte: a 163-byte voice message takes
+// 52 ms on the cable. Chrome hands a message on at once, so the pause between
+// two messages is counted from the end of the first one's time on the cable.
+const MS_PER_BYTE = 10 / 31.25;
+
+export class SendError extends Error {}
+
+// Two's complement of the sum of the data, low seven bits, as for banks.
+export function checksum(data) {
+  let sum = 0;
+  for (const byte of data) sum += byte;
+  return (128 - (sum & 0x7f)) & 0x7f;
+}
+
+// The complete single-voice message (163 bytes) for 155 data bytes, at an
+// address from 1 to 16 (a DX7s or DX7IID device number, a TX816 channel).
+export function voiceMessage(data, address) {
+  return message(VOICE_HEADER, data, VOICE_DATA_SIZE, address);
+}
+
+// The complete single-addendum message (57 bytes) for 49 data bytes.
+export function addendumMessage(data, address) {
+  return message(ADDENDUM_HEADER, data, ADDENDUM_DATA_SIZE, address);
+}
+
+function message(header, data, size, address) {
+  if (!(data instanceof Uint8Array) || data.length !== size) {
+    throw new SendError(`expected ${size} data bytes, got ${data?.length ?? "none"}`);
+  }
+  if (!Number.isInteger(address) || address < 1 || address > 16) {
+    throw new SendError(`address ${address} is not from 1 to 16`);
+  }
+  const out = new Uint8Array(header.length + size + TRAILER_SIZE);
+  out.set(header);
+  out[2] = address - 1;
+  out.set(data, header.length);
+  out[out.length - 2] = checksum(data);
+  out[out.length - 1] = 0xf7;
+  return out;
+}
+
+// The messages that send a voice to the targets that are on, in order. One
+// message per distinct header byte: with every address at 1, one voice
+// message reaches every target that is on. The addendum goes to each distinct
+// DX7s/DX7IID address (never on behalf of the TX816 or the fourth target),
+// before or after the voice messages as order says. Each step is { kind,
+// address, targets, bytes }, targets being the labels it is meant for.
+export function planSend(voice, settings, { addendumFirst = ADDENDUM_FIRST } = {}) {
+  const on = targetsOn(settings);
+  const voices = byAddress(on, settings).map(([address, targets]) => ({
+    kind: "voice", address, targets, bytes: voiceMessage(voice.voice, address),
+  }));
+  const addenda = voice.addendum
+    ? byAddress(on.filter((t) => t.addendum), settings).map(([address, targets]) => ({
+        kind: "addendum", address, targets, bytes: addendumMessage(voice.addendum, address),
+      }))
+    : [];
+  return addendumFirst ? [...addenda, ...voices] : [...voices, ...addenda];
+}
+
+// "addendum to DX7s and DX7IID at 1, then voice to DX7s, DX7IID and TX816 at 1"
+export function describePlan(plan) {
+  return plan.map((m) => `${m.kind} to ${listed(m.targets)} at ${m.address}`).join(", then ");
+}
+
+function listed(labels) {
+  return labels.length < 2 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+}
+
+// Send the plan's messages on output, pauseMs apart (after each message's own
+// time on the cable). Sends queue behind each other, so two quick taps never
+// interleave, and the pause also follows a send's last message before the
+// next send starts, so quick taps or next presses never reach an instrument
+// back to back. A send still waiting when a newer one arrives is dropped,
+// so quick next presses send only the voice they stop on. Parameter changes
+// (sendChange, sendMove) share the queue but neither drop a voice send nor are dropped
+// by one. Resolves to the plan when the last message has been handed on, or
+// to null when dropped; rejects with a SendError in plain words.
+let queue = Promise.resolve();
+let newestVoice = null;
+const newestChange = new Map(); // parameter number -> its newest change
+
+export function sendPlan(output, plan, pauseMs) {
+  const ticket = {};
+  newestVoice = ticket;
+  return enqueue(() => ticket === newestVoice, output, plan, pauseMs);
+}
+
+// Put a parameter change's plan (parameter-change.js, planChange) on the same
+// queue: it waits for a voice send in progress and that send's closing
+// pause. Of several changes to one parameter still waiting, only the newest
+// is sent; the others resolve to null. pauseMs (parameter-change.js,
+// CHANGE_PAUSE_MS) separates the plan's own messages (one per address) and
+// follows the last, after each message's time on the cable.
+export function sendChange(output, parameter, plan, pauseMs) {
+  return sendMove(output, [{ parameter, plan }], pauseMs)[0];
+}
+
+// Put one move's changes, a list of { parameter, plan }, on the queue in
+// order, as sendChange does each. Once one of them fails, the later ones are
+// not sent and reject with the same error, so a pair never goes half out: a
+// change already handed on stays, the rest never leave. One replaced by a
+// newer change to its parameter (null) does not stop the rest. Returns one
+// promise per change.
+export function sendMove(output, changes, pauseMs) {
+  let failure = null;
+  return changes.map(({ parameter, plan }) => {
+    const ticket = {};
+    newestChange.set(parameter, ticket);
+    return enqueue(() => newestChange.get(parameter) === ticket, output, plan, pauseMs, async () => {
+      if (failure) throw failure;
+      try {
+        return await sendNow(output, plan, pauseMs);
+      } catch (e) {
+        failure = e;
+        throw e;
+      }
+    });
+  });
+}
+
+// A change to parameter failed before it reached the queue (no output, say).
+// It still counts as the newest: a change to the parameter still waiting is
+// dropped, as a newer change would drop it, so the instruments keep the
+// value they last received, the one the slider goes back to.
+export function dropWaitingChange(parameter) {
+  newestChange.set(parameter, {});
+}
+
+// Queue send (by default, sending plan on output) behind everything queued;
+// it runs only if isNewest still says so, and resolves to null otherwise.
+function enqueue(isNewest, output, plan, pauseMs, send = () => sendNow(output, plan, pauseMs)) {
+  const run = queue.then(() => (isNewest() ? send() : null));
+  const last = plan.at(-1);
+  const gap = last ? Math.ceil(last.bytes.length * MS_PER_BYTE) + pauseMs : 0;
+  queue = run.then((sent) => (sent ? sleep(gap) : undefined), () => {});
+  return run;
+}
+
+// planSend then sendPlan with the settings' pause: what a tap on a voice does.
+// Resolves to the plan sent, or null when a newer send replaced it.
+export async function sendVoice(output, voice, settings, options) {
+  return sendPlan(output, planSend(voice, settings, options), settings.pauseMs);
+}
+
+async function sendNow(output, plan, pauseMs) {
+  if (!output) throw new SendError("No MIDI output is chosen.");
+  if (plan.length === 0) throw new SendError("No target is on: turn on at least one target.");
+  for (const [i, step] of plan.entries()) {
+    if (output.state === "disconnected") throw new SendError(gone(output));
+    try {
+      output.send(step.bytes);
+    } catch (e) {
+      throw new SendError(
+        e?.name === "InvalidAccessError"
+          ? "Chrome refused System Exclusive on this port. Allow MIDI for this site and reload."
+          : e?.name === "InvalidStateError" ? gone(output) : `The send failed: ${e?.message ?? e}`,
+      );
+    }
+    if (i < plan.length - 1) await sleep(Math.ceil(step.bytes.length * MS_PER_BYTE) + pauseMs);
+  }
+  return plan;
+}
+
+function gone(output) {
+  return `The MIDI output "${output.name}" is gone. Check the cable and the OTG adapter.`;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Web MIDI with System Exclusive. Chrome asks once per site and remembers.
+export async function openMidi() {
+  if (!window.isSecureContext) {
+    throw new SendError("This page is not on https, so Chrome offers no MIDI. Open it from its https address.");
+  }
+  if (!navigator.requestMIDIAccess) {
+    throw new SendError("This browser has no Web MIDI. Use Chrome on the phone.");
+  }
+  try {
+    return await navigator.requestMIDIAccess({ sysex: true });
+  } catch (e) {
+    if (e?.name === "SecurityError" || e?.name === "NotAllowedError") {
+      throw new SendError("MIDI with System Exclusive was not allowed. Allow MIDI for this site in Chrome's site settings, then reload.");
+    }
+    throw new SendError(`MIDI could not be opened: ${e?.message ?? e}`);
+  }
+}
+
+// The outputs present now, in a stable order.
+export function outputsOf(access) {
+  return [...access.outputs.values()]
+    .filter((o) => o.state !== "disconnected")
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// The output to use: the only one when there is one, otherwise the one
+// whose name was remembered, otherwise null (the page offers a chooser).
+export function chooseOutput(outputs, rememberedName) {
+  if (outputs.length === 1) return outputs[0];
+  return outputs.find((o) => o.name === rememberedName) ?? null;
+}
+
+// What the status line says about the ports when no output is in use.
+export function noOutputMessage(outputs) {
+  return outputs.length === 0
+    ? "No MIDI output. Plug in the USB-MIDI cable through the OTG adapter."
+    : "Choose a MIDI output.";
+}
