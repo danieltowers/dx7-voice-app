@@ -53,7 +53,14 @@
   <section aria-labelledby="library-heading">
     <h2 id="library-heading">Library</h2>
     <p>The starter voices are a small library of voices made by the DX7 build agent, fetched from this site when you load them.</p>
-    <p>To add your own voices, open <code>.syx</code> files: 32-voice bank dumps, as a DX7 sends them, cartridge archives share them and Dexed saves them with Save cart, or single-voice dumps. Each file's banks go under My banks, beside the library. Opening a file of the same name again replaces its banks; Setup lists the files added and removes one. DX7II extras in a file (its additional voice data) are not read: the voice is sent without them.</p>
+    <p>To add your own voices, open a <code>.syx</code> file.</p>
+    <ul>
+      <li>A file can hold a single voice or a full 32-voice bank, which is the format a DX7 sends, cartridge archives use, and Dexed writes with Save cart.</li>
+      <li>The banks from each file appear under 'My banks', next to the library.</li>
+      <li>If you open a file with the same name again, its new banks replace the old ones.</li>
+      <li>To see or remove the files you've added, go to Setup.</li>
+      <li>Files made on a DX7II may also hold extra voice data. The app ignores this and sends each voice without it.</li>
+    </ul>
     <p>A library file, <code>voice-library.json</code>, is written by <code>tool/dx7 export-library</code> in the <code>dx7-sound-builder-agent</code> project. Loading one, or the starter voices, replaces the library kept; My banks stay.</p>
     <p>Everything stays on this device; nothing is sent over the web.</p>
   </section>
